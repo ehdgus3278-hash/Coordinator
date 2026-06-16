@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>재활치료 스케줄링 코디네이터 (단독 실행판)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif;
+    background: #f9fafb; color: #1f2937; font-size: 14px;
+  }
+  header {
+    background: #1d4ed8; color: #fff; padding: 14px 0; box-shadow: 0 1px 3px rgba(0,0,0,.15);
+  }
+  header .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  header h1 { font-size: 18px; font-weight: 700; letter-spacing: .3px; }
+  header .sub { font-size: 12px; opacity: .85; margin-top: 2px; }
+  nav {
+    background: #fff; border-bottom: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  nav .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; display: flex; gap: 4px; overflow-x: auto; }
+  nav button {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    padding: 13px 16px; font-size: 14px; font-weight: 500; color: #4b5563;
+    cursor: pointer; white-space: nowrap; font-family: inherit;
+  }
+  nav button:hover { color: #2563eb; border-color: #93c5fd; }
+  nav button.active { color: #1d4ed8; border-color: #2563eb; }
+  main { max-width: 1120px; margin: 0 auto; padding: 24px 16px; }
+  h2 { font-size: 20px; font-weight: 700; color: #1f2937; margin-bottom: 20px; }
+  h3 { font-size: 15px; font-weight: 700; color: #1f2937; margin-bottom: 12px; }
+  .card {
+    background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    padding: 24px; margin-bottom: 24px;
+  }
+  label { display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 5px; }
+  .hint { font-size: 12px; font-weight: 500; color: #6b7280; margin-bottom: 4px; }
+  input, select {
+    border: 1px solid #d1d5db; border-radius: 8px; padding: 9px 12px; font-size: 14px;
+    font-family: inherit; width: 100%; outline: none;
+  }
+  input:focus, select:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,.3); }
+  .row { margin-bottom: 18px; }
+  .inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .inline > div { flex: 0 0 auto; }
+  .mono { font-family: 'Consolas', 'D2Coding', monospace; }
+  button.primary {
+    background: #2563eb; color: #fff; border: none; border-radius: 8px;
+    padding: 11px 18px; font-size: 14px; font-weight: 500; cursor: pointer; font-family: inherit;
+  }
+  button.primary:hover { background: #1d4ed8; }
+  button.ghost {
+    background: #fff; color: #4b5563; border: 1px solid #d1d5db; border-radius: 8px;
+    padding: 11px 18px; font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+  button.ghost:hover { background: #f9fafb; }
+  button.linkbtn { background: none; border: none; color: #2563eb; font-size: 13px; cursor: pointer; font-family: inherit; padding: 4px 0; }
+  button.linkbtn:hover { text-decoration: underline; }
+  button.del { background: none; border: none; color: #ef4444; font-size: 12px; cursor: pointer; font-family: inherit; }
+  button.del:hover { text-decoration: underline; }
+  button.tab {
+    background: #f3f4f6; color: #4b5563; border: none; border-radius: 8px;
+    padding: 9px 16px; font-size: 14px; font-weight: 500; cursor: pointer; font-family: inherit;
+  }
+  button.tab.on { background: #2563eb; color: #fff; }
+  .codeRow { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .codeRow input { flex: 1; }
+  .codeRow .x { color: #f87171; background: none; border: none; font-size: 20px; cursor: pointer; line-height: 1; padding: 0 4px; }
+  .actions { display: flex; gap: 12px; margin-top: 8px; }
+  .actions button { flex: 0 0 auto; }
+  .actions .primary { flex: 1; }
+  .err { color: #dc2626; background: #fef2f2; padding: 9px 12px; border-radius: 6px; font-size: 13px; margin: 8px 0; }
+  .warn { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+  .warn p { font-size: 13px; color: #92400e; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { border: 1px solid #e5e7eb; padding: 9px 12px; text-align: left; }
+  th { background: #f9fafb; color: #4b5563; font-weight: 600; }
+  tbody tr:hover { background: #eff6ff; }
+  .result-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px; border-radius: 8px; margin-bottom: 8px;
+  }
+  .result-item .left { display: flex; align-items: center; gap: 12px; }
+  .result-item .time { font-family: 'Consolas', monospace; font-weight: 700; color: #374151; width: 100px; }
+  .result-item .code { font-family: 'Consolas', monospace; font-weight: 600; color: #1d4ed8; }
+  .result-item .tag { font-size: 12px; color: #6b7280; background: rgba(255,255,255,.6); padding: 2px 8px; border-radius: 4px; }
+  .room-brain { background: #eef2ff; border-left: 4px solid #818cf8; }
+  .room-ot    { background: #ecfdf5; border-left: 4px solid #34d399; }
+  .room-st    { background: #fff7ed; border-left: 4px solid #fb923c; }
+  .room-etc   { background: #f3f4f6; border-left: 4px solid #9ca3af; }
+  .muted { color: #9ca3af; }
+  .cell-name { font-weight: 500; color: #1f2937; }
+  .cell-code { font-size: 12px; color: #2563eb; font-family: 'Consolas', monospace; }
+  .topbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
+  .topbar .right { margin-left: auto; }
+  .empty { color: #9ca3af; font-size: 14px; padding: 24px 0; text-align: center; }
+  .pill { display: inline-block; font-size: 12px; color: #6b7280; }
+  .scrollx { overflow-x: auto; }
+  .banner { background: #ecfeff; border: 1px solid #a5f3fc; color: #155e75; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 20px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>재활치료 스케줄링 코디네이터</h1>
+    <div class="sub">단독 실행판 · 인터넷 / 서버 불필요 · 데이터는 이 브라우저에만 저장됩니다</div>
+  </div>
+</header>
+
+<nav>
+  <div class="wrap" id="nav"></div>
+</nav>
+
+<main id="app"></main>
+
+<script>
+//==================================================================
+// 1. 마스터 데이터 (백엔드 constants.py 와 동일)
+//==================================================================
+const TIME_SLOTS = [
+  "08:00","08:30","09:00","09:30","10:00","10:30","11:00","11:30",
+  "13:30","14:00","14:30","15:00","15:30","16:00","16:30",
+];
+
+const DEFAULT_PRESCRIPTIONS = {
+  "MM105": { name: "중추신경계치료", duration: 30, room: "뇌재활치료실" },
+  "MM301": { name: "보행훈련",       duration: 30, room: "뇌재활치료실" },
+  "MX112": { name: "작업치료",       duration: 15, room: "작업치료실" },
+  "MX115": { name: "인지작업치료",   duration: 30, room: "작업치료실" },
+  "MS201": { name: "언어치료",       duration: 30, room: "언어치료실" },
+};
+
+const DEFAULT_ROOMS = {
+  "뇌재활치료실": { beds: 6 },
+  "작업치료실":   { beds: 4 },
+  "언어치료실":   { beds: 2 },
+};
+
+//==================================================================
+// 2. 영속 상태 (localStorage)
+//==================================================================
+const STORE_KEY = "rehab_coordinator_v1";
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return {
+    prescriptions: structuredClone(DEFAULT_PRESCRIPTIONS),
+    rooms: structuredClone(DEFAULT_ROOMS),
+    patients: [],   // {id, name}
+    schedules: [],  // {id, patientId, patientName, code, name, room, slot, bed, date}
+    seq: 1,
+  };
+}
+
+let state = loadState();
+function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function nextId() { return state.seq++; }
+
+//==================================================================
+// 3. 스케줄링 엔진 (백엔드 engine.py 를 그대로 JS 로 포팅)
+//==================================================================
+function firstSlotGe(t) {
+  for (let i = 0; i < TIME_SLOTS.length; i++) if (TIME_SLOTS[i] >= t) return i;
+  return TIME_SLOTS.length;
+}
+function lastSlotLt(t) {
+  let r = -1;
+  for (let i = 0; i < TIME_SLOTS.length; i++) if (TIME_SLOTS[i] < t) r = i;
+  return r;
+}
+function slotsNeeded(min) { return Math.max(1, Math.ceil(min / 30)); }
+function slotIndex(t) { const i = TIME_SLOTS.indexOf(t); return i; }
+
+function slotEndTime(slot) {
+  const [h, m] = slot.split(":").map(Number);
+  const tot = h * 60 + m + 30;
+  return String(Math.floor(tot / 60)).padStart(2, "0") + ":" + String(tot % 60).padStart(2, "0");
+}
+
+// 우선순위 1: 동일 치료실 묶기 (첫 등장 순서 유지)
+function groupByRoom(orders, rxMap) {
+  const firstSeen = {}, groups = {};
+  for (const code of orders) {
+    if (!rxMap[code]) continue;
+    const room = rxMap[code].room;
+    if (!(room in groups)) { firstSeen[room] = Object.keys(firstSeen).length; groups[room] = []; }
+    groups[room].push(code);
+  }
+  return Object.keys(groups)
+    .sort((a, b) => firstSeen[a] - firstSeen[b])
+    .map(room => [room, groups[room]]);
+}
+
+function schedulePatient(availStart, availEnd, orders, rxMap, roomCap, existing, date) {
+  const results = [], warnings = [];
+
+  // room -> slot -> Set(bed)
+  const slotBeds = {};
+  for (const room in roomCap) { slotBeds[room] = {}; for (const s of TIME_SLOTS) slotBeds[room][s] = new Set(); }
+  for (const s of existing) {
+    if (s.date !== date) continue;
+    if (slotBeds[s.room] && slotBeds[s.room][s.slot]) slotBeds[s.room][s.slot].add(s.bed || 1);
+  }
+
+  const startIdx = firstSlotGe(availStart);
+  const endIdx = lastSlotLt(availEnd);
+  if (startIdx > endIdx || endIdx < 0) {
+    warnings.push("배정 가능한 시간 슬롯이 없습니다.");
+    return { results, warnings };
+  }
+
+  for (const o of orders) if (!rxMap[o]) warnings.push("알 수 없는 처방코드: " + o);
+
+  const roomGroups = groupByRoom(orders, rxMap);
+  let currentIdx = startIdx;
+
+  for (const [, roomOrders] of roomGroups) {
+    for (const code of roomOrders) {
+      const rx = rxMap[code];
+      const n = slotsNeeded(rx.duration);
+      const room = rx.room;
+      const cap = roomCap[room]?.beds ?? 1;
+
+      let assigned = false;
+      for (let i = currentIdx; i < TIME_SLOTS.length; i++) {
+        if (i + n - 1 > endIdx) break;
+
+        // 우선순위 4: 필요한 모든 슬롯에서 수용 가능 여부
+        let full = false;
+        for (let j = 0; j < n; j++) {
+          if ((slotBeds[room]?.[TIME_SLOTS[i + j]]?.size ?? 0) >= cap) { full = true; break; }
+        }
+        if (full) continue;
+
+        // 비어있는 가장 낮은 베드 찾기
+        const occupied = new Set();
+        for (let j = 0; j < n; j++)
+          for (const b of (slotBeds[room]?.[TIME_SLOTS[i + j]] ?? [])) occupied.add(b);
+
+        // 이번 배정에서 이미 쓴 베드도 고려
+        for (const res of results) {
+          if (res.room !== room || !res.bed) continue;
+          const ri = slotIndex(res.slot);
+          const rn = slotsNeeded(rxMap[res.code]?.duration ?? 30);
+          if (ri < i + n && ri + rn > i) occupied.add(res.bed);
+        }
+
+        let bed = null;
+        for (let b = 1; b <= cap; b++) if (!occupied.has(b)) { bed = b; break; }
+        if (bed === null) continue;
+
+        results.push({ code, name: rx.name, room, slot: TIME_SLOTS[i], bed });
+        for (let j = 0; j < n; j++) slotBeds[room][TIME_SLOTS[i + j]].add(bed);
+        currentIdx = i + n;
+        assigned = true;
+        break;
+      }
+      if (!assigned) warnings.push(code + "(" + rx.name + "): 가용 슬롯이 없어 배정하지 못했습니다.");
+    }
+  }
+  return { results, warnings };
+}
+
+//==================================================================
+// 4. UI
+//==================================================================
+const TABS = [
+  ["register", "환자 등록"],
+  ["patient",  "환자별 시간표"],
+  ["room",     "치료실별 시간표"],
+  ["rx",       "처방코드 관리"],
+];
+let activeTab = "register";
+let lastResult = null;       // 마지막 배정 결과
+let registerForm = { name: "", date: today(), start: "08:00", end: "17:00", codes: [""] };
+let patientView = { patientId: "", date: today() };
+let roomView = { room: "뇌재활치료실", date: today() };
+
+function today() { return new Date().toISOString().split("T")[0]; }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
+function roomClass(room) {
+  if (room.includes("뇌재활")) return "room-brain";
+  if (room.includes("작업")) return "room-ot";
+  if (room.includes("언어")) return "room-st";
+  return "room-etc";
+}
+
+function renderNav() {
+  document.getElementById("nav").innerHTML = TABS.map(([id, label]) =>
+    `<button class="${id === activeTab ? "active" : ""}" onclick="go('${id}')">${label}</button>`
+  ).join("");
+}
+
+window.go = function (tab) { activeTab = tab; render(); };
+
+function render() {
+  renderNav();
+  const app = document.getElementById("app");
+  if (activeTab === "register") app.innerHTML = viewRegister();
+  else if (activeTab === "patient") app.innerHTML = viewPatient();
+  else if (activeTab === "room") app.innerHTML = viewRoom();
+  else if (activeTab === "rx") app.innerHTML = viewRx();
+}
+
+//------------------------------------------------ 환자 등록
+function viewRegister() {
+  const f = registerForm;
+  const codeRows = f.codes.map((c, i) => `
+    <div class="codeRow">
+      <input class="mono" placeholder="예: MM105" value="${esc(c)}"
+        oninput="onCode(${i}, this.value)" list="rxlist" />
+      ${f.codes.length > 1 ? `<button class="x" onclick="rmCode(${i})">&times;</button>` : ""}
+    </div>`).join("");
+
+  const rxOptions = Object.entries(state.prescriptions)
+    .map(([code, r]) => `<option value="${code}">${code} - ${esc(r.name)}</option>`).join("");
+
+  let resultHtml = "";
+  if (lastResult) {
+    const r = lastResult;
+    const warns = r.warnings.length
+      ? `<div class="warn">${r.warnings.map(w => `<p>⚠ ${esc(w)}</p>`).join("")}</div>` : "";
+    const items = r.results.length === 0
+      ? `<p class="empty">배정된 스케줄이 없습니다.</p>`
+      : r.results.slice().sort((a, b) => slotIndex(a.slot) - slotIndex(b.slot)).map(s => `
+        <div class="result-item ${roomClass(s.room)}">
+          <div class="left">
+            <span class="time">${s.slot}~${slotEndTime(s.slot)}</span>
+            <span class="code">${s.code}</span>
+            <span>${esc(s.name)}</span>
+          </div>
+          <span class="tag">${esc(s.room)} · 베드${s.bed}</span>
+        </div>`).join("");
+    resultHtml = `
+      <div class="card">
+        <h3>배정 결과 — ${esc(r.patientName)} <span class="pill">(${r.date})</span></h3>
+        ${warns}${items}
+      </div>`;
+  }
+
+  return `
+    <h2>환자 등록 및 자동 배정</h2>
+    <div class="banner">💡 입력한 환자/스케줄은 <b>이 브라우저</b>에만 저장됩니다. 다른 PC와는 공유되지 않습니다(시험용).</div>
+    <div class="card" style="max-width:640px">
+      <div class="row">
+        <label>환자명</label>
+        <input value="${esc(f.name)}" placeholder="홍길동" oninput="rf('name', this.value)" />
+      </div>
+      <div class="row">
+        <label>배정 날짜</label>
+        <input type="date" value="${f.date}" oninput="rf('date', this.value)" style="width:auto" />
+      </div>
+      <div class="row">
+        <label>가능 시간</label>
+        <div class="inline">
+          <select style="width:auto" onchange="rf('start', this.value)">
+            ${TIME_SLOTS.map(t => `<option ${t === f.start ? "selected" : ""}>${t}</option>`).join("")}
+          </select>
+          <span class="muted">~</span>
+          <input type="time" value="${f.end}" oninput="rf('end', this.value)" style="width:auto" />
+        </div>
+      </div>
+      <div class="row">
+        <label>처방코드</label>
+        ${codeRows}
+        <datalist id="rxlist">${rxOptions}</datalist>
+        <button class="linkbtn" onclick="addCode()">+ 처방코드 추가</button>
+      </div>
+      <div id="regErr"></div>
+      <div class="actions">
+        <button class="primary" onclick="doAssign()">자동 배정</button>
+        <button class="ghost" onclick="resetForm()">초기화</button>
+      </div>
+    </div>
+    ${resultHtml}`;
+}
+
+window.rf = function (k, v) { registerForm[k] = v; };
+window.onCode = function (i, v) { registerForm.codes[i] = v.toUpperCase().trim(); };
+window.addCode = function () { registerForm.codes.push(""); render(); };
+window.rmCode = function (i) { registerForm.codes.splice(i, 1); render(); };
+window.resetForm = function () { registerForm = { name: "", date: today(), start: "08:00", end: "17:00", codes: [""] }; lastResult = null; render(); };
+
+window.doAssign = function () {
+  const f = registerForm;
+  const errBox = document.getElementById("regErr");
+  if (!f.name.trim()) { errBox.innerHTML = `<div class="err">환자명을 입력해주세요.</div>`; return; }
+  const codes = f.codes.map(c => c.trim()).filter(Boolean);
+  if (codes.length === 0) { errBox.innerHTML = `<div class="err">처방코드를 1개 이상 입력해주세요.</div>`; return; }
+
+  const { results, warnings } = schedulePatient(
+    f.start, f.end, codes, state.prescriptions, state.rooms, state.schedules, f.date
+  );
+
+  const pid = nextId();
+  state.patients.push({ id: pid, name: f.name.trim() });
+  for (const r of results) {
+    state.schedules.push({
+      id: nextId(), patientId: pid, patientName: f.name.trim(),
+      code: r.code, name: r.name, room: r.room, slot: r.slot, bed: r.bed, date: f.date,
+    });
+  }
+  save();
+  lastResult = { patientName: f.name.trim(), date: f.date, results, warnings };
+  render();
+};
+
+//------------------------------------------------ 환자별 시간표
+function viewPatient() {
+  if (state.patients.length === 0)
+    return `<h2>환자별 시간표</h2><div class="card"><p class="empty">등록된 환자가 없습니다. '환자 등록'에서 먼저 배정해주세요.</p></div>`;
+
+  if (!patientView.patientId) patientView.patientId = String(state.patients[state.patients.length - 1].id);
+  const pid = Number(patientView.patientId);
+  const patient = state.patients.find(p => p.id === pid);
+  const rows = state.schedules
+    .filter(s => s.patientId === pid && s.date === patientView.date)
+    .sort((a, b) => slotIndex(a.slot) - slotIndex(b.slot));
+
+  const body = rows.length === 0
+    ? `<p class="empty">해당 날짜에 배정된 스케줄이 없습니다.</p>`
+    : `<table><thead><tr><th>시간</th><th>처방코드</th><th>치료명</th><th>치료실</th><th>베드</th><th></th></tr></thead>
+       <tbody>${rows.map(s => `
+        <tr>
+          <td class="mono">${s.slot}~${slotEndTime(s.slot)}</td>
+          <td class="mono" style="color:#1d4ed8">${s.code}</td>
+          <td>${esc(s.name)}</td>
+          <td>${esc(s.room)}</td>
+          <td>${s.bed}</td>
+          <td><button class="del" onclick="delSchedule(${s.id})">삭제</button></td>
+        </tr>`).join("")}</tbody></table>`;
+
+  return `
+    <h2>환자별 시간표</h2>
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <div class="hint">환자 선택</div>
+          <select onchange="pv('patientId', this.value)">
+            ${state.patients.map(p => `<option value="${p.id}" ${p.id === pid ? "selected" : ""}>${esc(p.name)} (#${p.id})</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <div class="hint">날짜</div>
+          <input type="date" value="${patientView.date}" onchange="pv('date', this.value)" />
+        </div>
+      </div>
+      <h3>${esc(patient?.name || "")}님의 시간표</h3>
+      ${body}
+    </div>`;
+}
+window.pv = function (k, v) { patientView[k] = v; render(); };
+
+//------------------------------------------------ 치료실별 시간표
+function viewRoom() {
+  const room = roomView.room;
+  const beds = state.rooms[room]?.beds || 0;
+  const date = roomView.date;
+  const here = state.schedules.filter(s => s.room === room && s.date === date);
+  const at = (slot, bed) => here.find(s => s.slot === slot && s.bed === bed);
+
+  const rooms = Object.keys(state.rooms);
+  const grid = `
+    <div class="scrollx">
+    <table>
+      <thead><tr><th>시간</th>${Array.from({length:beds},(_,i)=>`<th>베드${i+1}</th>`).join("")}</tr></thead>
+      <tbody>
+        ${TIME_SLOTS.map(slot => `
+          <tr>
+            <td class="mono muted">${slot}</td>
+            ${Array.from({length:beds},(_,i)=>{
+              const s = at(slot, i+1);
+              return `<td>${ s
+                ? `<div class="cell-name">${esc(s.patientName)}</div><div class="cell-code">${s.code}</div>`
+                : `<span class="muted">-</span>` }</td>`;
+            }).join("")}
+          </tr>`).join("")}
+      </tbody>
+    </table>
+    </div>`;
+
+  return `
+    <h2>치료실별 시간표</h2>
+    <div class="card">
+      <div class="topbar">
+        ${rooms.map(r => `<button class="tab ${r === room ? "on" : ""}" onclick="rv('room', '${r}')">${esc(r)}</button>`).join("")}
+        <div class="right"><input type="date" value="${date}" onchange="rv('date', this.value)" /></div>
+      </div>
+      ${beds > 0 ? grid : `<p class="empty">치료실 정보가 없습니다.</p>`}
+    </div>`;
+}
+window.rv = function (k, v) { roomView[k] = v; render(); };
+
+//------------------------------------------------ 처방코드 관리
+function viewRx() {
+  const list = Object.entries(state.prescriptions);
+  const rooms = Object.keys(state.rooms);
+  return `
+    <h2>처방코드 관리</h2>
+    <div class="card" style="max-width:720px">
+      <h3>새 처방코드 추가</h3>
+      <div class="inline" style="gap:12px; align-items:flex-end">
+        <div style="flex:1"><div class="hint">코드</div><input id="nrxCode" class="mono" placeholder="MM105" /></div>
+        <div style="flex:1"><div class="hint">치료명</div><input id="nrxName" placeholder="중추신경계치료" /></div>
+        <div><div class="hint">시간(분)</div><input id="nrxDur" type="number" value="30" min="5" step="5" style="width:90px" /></div>
+        <div><div class="hint">치료실</div>
+          <select id="nrxRoom">${rooms.map(r => `<option>${esc(r)}</option>`).join("")}</select></div>
+        <button class="primary" onclick="addRx()">추가</button>
+      </div>
+      <div id="rxErr"></div>
+    </div>
+    <div class="card" style="padding:0; overflow:hidden">
+      <table>
+        <thead><tr><th>코드</th><th>치료명</th><th>시간</th><th>치료실</th><th></th></tr></thead>
+        <tbody>${list.map(([code, r]) => `
+          <tr>
+            <td class="mono" style="color:#1d4ed8">${code}</td>
+            <td>${esc(r.name)}</td>
+            <td>${r.duration}분</td>
+            <td>${esc(r.room)}</td>
+            <td><button class="del" onclick="delRx('${code}')">삭제</button></td>
+          </tr>`).join("")}</tbody>
+      </table>
+    </div>`;
+}
+window.addRx = function () {
+  const code = document.getElementById("nrxCode").value.toUpperCase().trim();
+  const name = document.getElementById("nrxName").value.trim();
+  const duration = Number(document.getElementById("nrxDur").value);
+  const room = document.getElementById("nrxRoom").value;
+  const err = document.getElementById("rxErr");
+  if (!code || !name) { err.innerHTML = `<div class="err">코드와 치료명을 입력해주세요.</div>`; return; }
+  if (state.prescriptions[code]) { err.innerHTML = `<div class="err">이미 존재하는 처방코드입니다.</div>`; return; }
+  state.prescriptions[code] = { name, duration, room };
+  save(); render();
+};
+window.delRx = function (code) { delete state.prescriptions[code]; save(); render(); };
+window.delSchedule = function (id) { state.schedules = state.schedules.filter(s => s.id !== id); save(); render(); };
+
+//==================================================================
+render();
+</script>
+</body>
+</html>
