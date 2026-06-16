@@ -15,7 +15,7 @@ from ..schemas import (
     TherapistScheduleOut,
     TherapistSlotOut,
 )
-from ..scheduler.engine import schedule_patient
+from ..scheduler.engine import make_label, room_station_list, schedule_patient
 from ..constants import TIME_SLOTS
 
 router = APIRouter()
@@ -23,9 +23,19 @@ router = APIRouter()
 
 def _rx_map(db: Session) -> dict:
     return {
-        rx.code: {"name": rx.name, "duration": rx.duration, "room_name": rx.room_name}
+        rx.code: {
+            "name": rx.name,
+            "duration": rx.duration,
+            "room_name": rx.room_name,
+            "zones": rx.station_zones,
+            "overlay_targets": rx.overlay_targets,
+        }
         for rx in db.query(PrescriptionCode).all()
     }
+
+
+def _room_stations_map(db: Session) -> dict:
+    return {r.name: r.stations for r in db.query(Room).all() if r.stations}
 
 
 def _slot_sort_key(slot_time: str) -> int:
@@ -39,11 +49,12 @@ def _slot_sort_key(slot_time: str) -> int:
 def auto_assign(data: PatientAutoAssign, db: Session = Depends(get_db)):
     rx_map = _rx_map(db)
     room_capacity = {r.name: r.beds for r in db.query(Room).all()}
+    room_stations = _room_stations_map(db)
 
     existing = db.query(Schedule).filter(Schedule.date == data.date).all()
     existing_list = [
         {"room_name": s.room_name, "slot_time": s.slot_time,
-         "bed_number": s.bed_number, "prescription_code": s.prescription_code}
+         "station": s.station, "prescription_code": s.prescription_code}
         for s in existing
     ]
 
@@ -56,6 +67,7 @@ def auto_assign(data: PatientAutoAssign, db: Session = Depends(get_db)):
         room_capacity_map=room_capacity,
         existing_schedules=existing_list,
         target_date=data.date,
+        room_stations_map=room_stations,
     )
 
     patient = Patient(name=data.name, available_start=data.available_start, available_end=data.available_end)
@@ -67,9 +79,10 @@ def auto_assign(data: PatientAutoAssign, db: Session = Depends(get_db)):
         s = Schedule(
             patient_id=patient.id,
             prescription_code=item["prescription_code"],
+            overlay_code=item.get("overlay_code"),
             room_name=item["room_name"],
             slot_time=item["slot_time"],
-            bed_number=item["bed_number"],
+            station=item["station"],
             date=data.date,
         )
         db.add(s)
@@ -79,8 +92,11 @@ def auto_assign(data: PatientAutoAssign, db: Session = Depends(get_db)):
             slot_time=item["slot_time"],
             prescription_code=item["prescription_code"],
             prescription_name=item["prescription_name"],
+            overlay_code=item.get("overlay_code"),
+            overlay_name=item.get("overlay_name"),
             room_name=item["room_name"],
-            bed_number=item["bed_number"],
+            station=item["station"],
+            label=item["label"],
         ))
 
     db.commit()
@@ -111,8 +127,11 @@ def get_patient_schedule(
             slot_time=s.slot_time,
             prescription_code=s.prescription_code,
             prescription_name=rx.get(s.prescription_code, {}).get("name", s.prescription_code),
+            overlay_code=s.overlay_code,
+            overlay_name=rx.get(s.overlay_code, {}).get("name") if s.overlay_code else None,
             room_name=s.room_name,
-            bed_number=s.bed_number,
+            station=s.station,
+            label=make_label(patient.name, s.prescription_code, s.overlay_code),
             therapist_name=s.therapist.name if s.therapist else None,
         )
         for s in schedules
@@ -138,6 +157,9 @@ def get_room_schedule(
         .all()
     )
     rx = _rx_map(db)
+    stations_map = {room_name: room.stations} if room.stations else {}
+    station_names = [s["name"] for s in room_station_list(room_name, stations_map, {room_name: room.beds})]
+    station_order = {name: i for i, name in enumerate(station_names)}
 
     slots = sorted([
         RoomSlotOut(
@@ -146,12 +168,14 @@ def get_room_schedule(
             patient_name=s.patient.name,
             prescription_code=s.prescription_code,
             prescription_name=rx.get(s.prescription_code, {}).get("name", s.prescription_code),
-            bed_number=s.bed_number,
+            overlay_code=s.overlay_code,
+            station=s.station,
+            label=make_label(s.patient.name, s.prescription_code, s.overlay_code),
         )
         for s in schedules
-    ], key=lambda x: (_slot_sort_key(x.slot_time), x.bed_number))
+    ], key=lambda x: (_slot_sort_key(x.slot_time), station_order.get(x.station, 99)))
 
-    return RoomScheduleOut(room_name=room_name, beds=room.beds, date=date, slots=slots)
+    return RoomScheduleOut(room_name=room_name, beds=room.beds, stations=station_names, date=date, slots=slots)
 
 
 @router.get("/therapist/{therapist_id}", response_model=TherapistScheduleOut)
@@ -164,11 +188,14 @@ def get_therapist_schedule(
     if not therapist:
         raise HTTPException(status_code=404, detail="치료사를 찾을 수 없습니다")
 
-    schedules = (
-        db.query(Schedule)
-        .filter(Schedule.room_name == therapist.room_name, Schedule.date == date)
-        .all()
-    )
+    room = db.query(Room).filter(Room.name == therapist.room_name).first()
+    station_names = {s["name"] for s in (room.stations or [])} if room else set()
+
+    query = db.query(Schedule).filter(Schedule.room_name == therapist.room_name, Schedule.date == date)
+    if therapist.name in station_names:
+        query = query.filter(Schedule.station == therapist.name)
+    schedules = query.all()
+
     rx = _rx_map(db)
 
     slots = sorted([
@@ -178,6 +205,7 @@ def get_therapist_schedule(
             patient_name=s.patient.name,
             prescription_code=s.prescription_code,
             prescription_name=rx.get(s.prescription_code, {}).get("name", s.prescription_code),
+            label=make_label(s.patient.name, s.prescription_code, s.overlay_code),
         )
         for s in schedules
     ], key=lambda x: _slot_sort_key(x.slot_time))

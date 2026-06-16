@@ -67,6 +67,7 @@ export default function TherapistScheduleView() {
                       <th className="border px-3 py-2">환자</th>
                       <th className="border px-3 py-2">처방코드</th>
                       <th className="border px-3 py-2">치료명</th>
+                      <th className="border px-3 py-2">표시</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -76,6 +77,7 @@ export default function TherapistScheduleView() {
                         <td className="border px-3 py-2 font-medium">{s.patient_name}</td>
                         <td className="border px-3 py-2 font-mono text-blue-700">{s.prescription_code}</td>
                         <td className="border px-3 py-2">{s.prescription_name}</td>
+                        <td className="border px-3 py-2 font-mono text-indigo-700">{s.label}</td>
                       </tr>
                     ))}
                   </tbody>

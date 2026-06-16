@@ -61,17 +61,23 @@ export default function PatientScheduleView() {
                     <th className="border px-3 py-2">처방코드</th>
                     <th className="border px-3 py-2">치료명</th>
                     <th className="border px-3 py-2">치료실</th>
-                    <th className="border px-3 py-2">베드</th>
+                    <th className="border px-3 py-2">스테이션</th>
+                    <th className="border px-3 py-2">표시</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.schedules.map(s => (
                     <tr key={s.id} className="hover:bg-blue-50">
                       <td className="border px-3 py-2 font-mono">{s.slot_time}~{slotEndTime(s.slot_time)}</td>
-                      <td className="border px-3 py-2 font-mono text-blue-700">{s.prescription_code}</td>
-                      <td className="border px-3 py-2">{s.prescription_name}</td>
+                      <td className="border px-3 py-2 font-mono text-blue-700">
+                        {s.prescription_code}{s.overlay_code ? `+${s.overlay_code}` : ''}
+                      </td>
+                      <td className="border px-3 py-2">
+                        {s.prescription_name}{s.overlay_name ? ` + ${s.overlay_name}` : ''}
+                      </td>
                       <td className="border px-3 py-2">{s.room_name}</td>
-                      <td className="border px-3 py-2">{s.bed_number}</td>
+                      <td className="border px-3 py-2">{s.station}</td>
+                      <td className="border px-3 py-2 font-mono text-indigo-700">{s.label}</td>
                     </tr>
                   ))}
                 </tbody>

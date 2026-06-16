@@ -31,6 +31,7 @@ def update_room(name: str, data: RoomCreate, db: Session = Depends(get_db)):
     if not room:
         raise HTTPException(status_code=404, detail="치료실을 찾을 수 없습니다")
     room.beds = data.beds
+    room.stations = [s.model_dump() for s in data.stations] if data.stations else None
     db.commit()
     db.refresh(room)
     return room

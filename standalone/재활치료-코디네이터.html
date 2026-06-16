@@ -85,6 +85,7 @@
   .result-item .time { font-family: 'Consolas', monospace; font-weight: 700; color: #374151; width: 100px; }
   .result-item .code { font-family: 'Consolas', monospace; font-weight: 600; color: #1d4ed8; }
   .result-item .tag { font-size: 12px; color: #6b7280; background: rgba(255,255,255,.6); padding: 2px 8px; border-radius: 4px; }
+  .result-item .label { font-size: 12px; font-family: 'Consolas', monospace; color: #4338ca; background: #eef2ff; padding: 2px 8px; border-radius: 4px; }
   .room-brain { background: #eef2ff; border-left: 4px solid #818cf8; }
   .room-ot    { background: #ecfdf5; border-left: 4px solid #34d399; }
   .room-st    { background: #fff7ed; border-left: 4px solid #fb923c; }
@@ -123,24 +124,46 @@ const TIME_SLOTS = [
   "13:30","14:00","14:30","15:00","15:30","16:00","16:30",
 ];
 
+const BRAIN_ROOM = "뇌재활치료실";
+const OT_ROOM = "작업치료실";
+const ST_ROOM = "언어치료실";
+const BRAIN_THERAPISTS = ["황병훈", "문승현", "이진용", "김동현"];
+
+// 치료실별 명명된 스테이션 목록 (구조 데이터, 사용자 편집 대상 아님 — 백엔드 ROOM_STATIONS 와 동일)
+const ROOM_STATIONS = {
+  [BRAIN_ROOM]: [
+    ...["M1","M2","M3","M4"].map(n => ({ name: n, zone: "M" })),
+    ...["B1","B2"].map(n => ({ name: n, zone: "B" })),
+    ...["T1","T2","T3"].map(n => ({ name: n, zone: "T" })),
+    ...BRAIN_THERAPISTS.map(n => ({ name: n, zone: "THERAPIST" })),
+  ],
+};
+
+// 처방코드별 표시 라벨 접미사 (예: 홍길동1(301), 홍길동M(102), 홍길동T(10204))
+const LABEL_SUFFIX = { "MM301": "1", "MM302": "2", "MM102": "M", "MM10204": "T" };
+
 const DEFAULT_PRESCRIPTIONS = {
-  "MM105": { name: "중추신경계치료", duration: 30, room: "뇌재활치료실" },
-  "MM301": { name: "보행훈련",       duration: 30, room: "뇌재활치료실" },
-  "MX112": { name: "작업치료",       duration: 15, room: "작업치료실" },
-  "MX115": { name: "인지작업치료",   duration: 30, room: "작업치료실" },
-  "MS201": { name: "언어치료",       duration: 30, room: "언어치료실" },
+  "MM105":   { name: "중추신경계치료",         duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"] },
+  "MM301":   { name: "보행훈련",               duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
+  "MM302":   { name: "보행훈련2(임시명)",       duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
+  "MM102":   { name: "신경계운동치료(임시명)",   duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
+  "MM151":   { name: "중첩치료(임시명)",        duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301","MM302"] },
+  "MM10204": { name: "보조치료(임시명)",        duration: 30, room: BRAIN_ROOM, zones: ["T"] },
+  "MX112": { name: "작업치료",     duration: 15, room: OT_ROOM },
+  "MX115": { name: "인지작업치료", duration: 30, room: OT_ROOM },
+  "MS201": { name: "언어치료",     duration: 30, room: ST_ROOM },
 };
 
 const DEFAULT_ROOMS = {
-  "뇌재활치료실": { beds: 6 },
-  "작업치료실":   { beds: 4 },
-  "언어치료실":   { beds: 2 },
+  [BRAIN_ROOM]: { beds: ROOM_STATIONS[BRAIN_ROOM].length },
+  [OT_ROOM]:    { beds: 4 },
+  [ST_ROOM]:    { beds: 2 },
 };
 
 //==================================================================
 // 2. 영속 상태 (localStorage)
 //==================================================================
-const STORE_KEY = "rehab_coordinator_v1";
+const STORE_KEY = "rehab_coordinator_v2"; // v1(베드 모델) 과 데이터 구조가 달라 키를 분리
 
 function loadState() {
   try {
@@ -151,7 +174,7 @@ function loadState() {
     prescriptions: structuredClone(DEFAULT_PRESCRIPTIONS),
     rooms: structuredClone(DEFAULT_ROOMS),
     patients: [],   // {id, name}
-    schedules: [],  // {id, patientId, patientName, code, name, room, slot, bed, date}
+    schedules: [],  // {id, patientId, patientName, code, name, overlayCode, overlayName, room, slot, station, label, date}
     seq: 1,
   };
 }
@@ -161,7 +184,7 @@ function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 function nextId() { return state.seq++; }
 
 //==================================================================
-// 3. 스케줄링 엔진 (백엔드 engine.py 를 그대로 JS 로 포팅)
+// 3. 스케줄링 엔진 (백엔드 scheduler/engine.py 를 그대로 JS 로 포팅)
 //==================================================================
 function firstSlotGe(t) {
   for (let i = 0; i < TIME_SLOTS.length; i++) if (TIME_SLOTS[i] >= t) return i;
@@ -173,7 +196,7 @@ function lastSlotLt(t) {
   return r;
 }
 function slotsNeeded(min) { return Math.max(1, Math.ceil(min / 30)); }
-function slotIndex(t) { const i = TIME_SLOTS.indexOf(t); return i; }
+function slotIndex(t) { return TIME_SLOTS.indexOf(t); }
 
 function slotEndTime(slot) {
   const [h, m] = slot.split(":").map(Number);
@@ -181,29 +204,91 @@ function slotEndTime(slot) {
   return String(Math.floor(tot / 60)).padStart(2, "0") + ":" + String(tot % 60).padStart(2, "0");
 }
 
-// 우선순위 1: 동일 치료실 묶기 (첫 등장 순서 유지)
-function groupByRoom(orders, rxMap) {
-  const firstSeen = {}, groups = {};
-  for (const code of orders) {
-    if (!rxMap[code]) continue;
-    const room = rxMap[code].room;
-    if (!(room in groups)) { firstSeen[room] = Object.keys(firstSeen).length; groups[room] = []; }
-    groups[room].push(code);
+// 예: 홍길동1(301), 홍길동2(302), 홍길동1F(301+151), 홍길동M(102), 홍길동T(10204)
+function makeLabel(patientName, code, overlayCode) {
+  const suffix = LABEL_SUFFIX[code];
+  if (suffix === undefined) return patientName;
+  const codeNum = code.startsWith("MM") ? code.slice(2) : code;
+  if (overlayCode) {
+    const overlayNum = overlayCode.startsWith("MM") ? overlayCode.slice(2) : overlayCode;
+    return `${patientName}${suffix}F(${codeNum}+${overlayNum})`;
   }
-  return Object.keys(groups)
-    .sort((a, b) => firstSeen[a] - firstSeen[b])
-    .map(room => [room, groups[room]]);
+  return `${patientName}${suffix}(${codeNum})`;
 }
 
-function schedulePatient(availStart, availEnd, orders, rxMap, roomCap, existing, date) {
+// 해당 치료실의 스테이션 목록. 명명된 스테이션이 없으면 번호 베드를 합성한다.
+function roomStationList(room) {
+  const stations = ROOM_STATIONS[room];
+  if (stations && stations.length) return stations;
+  const beds = state.rooms[room]?.beds ?? 1;
+  return Array.from({ length: beds }, (_, i) => ({ name: String(i + 1), zone: null }));
+}
+
+function eligibleStationNames(zones, stations) {
+  if (!zones || zones.length === 0) return stations.map(s => s.name);
+  return stations.filter(s => zones.includes(s.zone)).map(s => s.name);
+}
+
+// 중첩 사용 코드(예: MM151)를 대상 코드(예: MM301/MM302)와 짝지어 하나의 스케줄링 단위로 묶는다.
+function buildUnits(orders, rxMap, warnings) {
+  const n = orders.length;
+  const consumed = new Array(n).fill(false);
+  const overlayFor = new Array(n).fill(null);
+
+  for (let i = 0; i < n; i++) {
+    const code = orders[i];
+    const rx = rxMap[code];
+    if (!rx || !rx.overlayTargets) continue;
+    const targets = rx.overlayTargets;
+    let paired = false;
+    for (let j = 0; j < n; j++) {
+      if (j === i || consumed[j] || overlayFor[j] !== null) continue;
+      if (targets.includes(orders[j])) {
+        overlayFor[j] = code;
+        consumed[i] = true;
+        paired = true;
+        break;
+      }
+    }
+    if (!paired) {
+      warnings.push(`${code}: 중첩 대상(${targets.join("/")})이 없어 배정하지 못했습니다.`);
+      consumed[i] = true;
+    }
+  }
+
+  const units = [];
+  for (let i = 0; i < n; i++) {
+    if (consumed[i]) continue;
+    const rx = rxMap[orders[i]];
+    if (!rx) continue;
+    units.push({ code: orders[i], overlay: overlayFor[i], rx });
+  }
+  return units;
+}
+
+// 우선순위 1: 동일 치료실 묶기 (첫 등장 순서 유지)
+function groupUnitsByRoom(units) {
+  const firstSeen = {}, groups = {};
+  for (const u of units) {
+    const room = u.rx.room;
+    if (!(room in groups)) { firstSeen[room] = Object.keys(firstSeen).length; groups[room] = []; }
+    groups[room].push(u);
+  }
+  return Object.keys(groups).sort((a, b) => firstSeen[a] - firstSeen[b]).map(r => [r, groups[r]]);
+}
+
+function schedulePatient(patientName, availStart, availEnd, orders, rxMap, existing, date) {
   const results = [], warnings = [];
 
-  // room -> slot -> Set(bed)
-  const slotBeds = {};
-  for (const room in roomCap) { slotBeds[room] = {}; for (const s of TIME_SLOTS) slotBeds[room][s] = new Set(); }
+  // room -> slot -> Set(점유 중인 스테이션 이름)
+  const slotStations = {};
+  for (const room of Object.keys(state.rooms)) {
+    slotStations[room] = {};
+    for (const s of TIME_SLOTS) slotStations[room][s] = new Set();
+  }
   for (const s of existing) {
-    if (s.date !== date) continue;
-    if (slotBeds[s.room] && slotBeds[s.room][s.slot]) slotBeds[s.room][s.slot].add(s.bed || 1);
+    if (s.date !== date || !s.station) continue;
+    if (slotStations[s.room] && slotStations[s.room][s.slot]) slotStations[s.room][s.slot].add(s.station);
   }
 
   const startIdx = firstSlotGe(availStart);
@@ -215,51 +300,55 @@ function schedulePatient(availStart, availEnd, orders, rxMap, roomCap, existing,
 
   for (const o of orders) if (!rxMap[o]) warnings.push("알 수 없는 처방코드: " + o);
 
-  const roomGroups = groupByRoom(orders, rxMap);
+  const units = buildUnits(orders, rxMap, warnings);
+  const roomGroups = groupUnitsByRoom(units);
   let currentIdx = startIdx;
 
-  for (const [, roomOrders] of roomGroups) {
-    for (const code of roomOrders) {
-      const rx = rxMap[code];
+  for (const [room, roomUnits] of roomGroups) {
+    const allStations = roomStationList(room);
+
+    for (const unit of roomUnits) {
+      const { code, overlay: overlayCode, rx } = unit;
       const n = slotsNeeded(rx.duration);
-      const room = rx.room;
-      const cap = roomCap[room]?.beds ?? 1;
+      const eligible = eligibleStationNames(rx.zones, allStations);
+
+      if (eligible.length === 0) {
+        warnings.push(`${code}(${rx.name}): 배정 가능한 스테이션이 없습니다.`);
+        continue;
+      }
 
       let assigned = false;
       for (let i = currentIdx; i < TIME_SLOTS.length; i++) {
         if (i + n - 1 > endIdx) break;
 
-        // 우선순위 4: 필요한 모든 슬롯에서 수용 가능 여부
-        let full = false;
-        for (let j = 0; j < n; j++) {
-          if ((slotBeds[room]?.[TIME_SLOTS[i + j]]?.size ?? 0) >= cap) { full = true; break; }
-        }
-        if (full) continue;
-
-        // 비어있는 가장 낮은 베드 찾기
+        // 우선순위 4: 필요한 모든 슬롯에서 해당 zone 의 빈 스테이션이 있는지 확인
         const occupied = new Set();
         for (let j = 0; j < n; j++)
-          for (const b of (slotBeds[room]?.[TIME_SLOTS[i + j]] ?? [])) occupied.add(b);
+          for (const st of (slotStations[room]?.[TIME_SLOTS[i + j]] ?? [])) occupied.add(st);
 
-        // 이번 배정에서 이미 쓴 베드도 고려
+        // 이번 배정 실행 중 이미 점유된 스테이션도 고려
         for (const res of results) {
-          if (res.room !== room || !res.bed) continue;
+          if (res.room !== room || !res.station) continue;
           const ri = slotIndex(res.slot);
           const rn = slotsNeeded(rxMap[res.code]?.duration ?? 30);
-          if (ri < i + n && ri + rn > i) occupied.add(res.bed);
+          if (ri < i + n && ri + rn > i) occupied.add(res.station);
         }
 
-        let bed = null;
-        for (let b = 1; b <= cap; b++) if (!occupied.has(b)) { bed = b; break; }
-        if (bed === null) continue;
+        const station = eligible.find(nm => !occupied.has(nm));
+        if (!station) continue;
 
-        results.push({ code, name: rx.name, room, slot: TIME_SLOTS[i], bed });
-        for (let j = 0; j < n; j++) slotBeds[room][TIME_SLOTS[i + j]].add(bed);
+        const overlayName = overlayCode ? (rxMap[overlayCode]?.name ?? null) : null;
+        results.push({
+          code, name: rx.name, overlayCode, overlayName,
+          room, slot: TIME_SLOTS[i], station,
+          label: makeLabel(patientName, code, overlayCode),
+        });
+        for (let j = 0; j < n; j++) slotStations[room][TIME_SLOTS[i + j]].add(station);
         currentIdx = i + n;
         assigned = true;
         break;
       }
-      if (!assigned) warnings.push(code + "(" + rx.name + "): 가용 슬롯이 없어 배정하지 못했습니다.");
+      if (!assigned) warnings.push(`${code}(${rx.name}): 가용 슬롯이 없어 배정하지 못했습니다.`);
     }
   }
   return { results, warnings };
@@ -278,7 +367,7 @@ let activeTab = "register";
 let lastResult = null;       // 마지막 배정 결과
 let registerForm = { name: "", date: today(), start: "08:00", end: "17:00", codes: [""] };
 let patientView = { patientId: "", date: today() };
-let roomView = { room: "뇌재활치료실", date: today() };
+let roomView = { room: BRAIN_ROOM, date: today() };
 
 function today() { return new Date().toISOString().split("T")[0]; }
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
@@ -330,10 +419,11 @@ function viewRegister() {
         <div class="result-item ${roomClass(s.room)}">
           <div class="left">
             <span class="time">${s.slot}~${slotEndTime(s.slot)}</span>
-            <span class="code">${s.code}</span>
-            <span>${esc(s.name)}</span>
+            <span class="code">${s.code}${s.overlayCode ? "+" + s.overlayCode : ""}</span>
+            <span>${esc(s.name)}${s.overlayName ? " + " + esc(s.overlayName) : ""}</span>
+            <span class="label">${esc(s.label)}</span>
           </div>
-          <span class="tag">${esc(s.room)} · 베드${s.bed}</span>
+          <span class="tag">${esc(s.room)} · ${esc(s.station)}</span>
         </div>`).join("");
     resultHtml = `
       <div class="card">
@@ -392,8 +482,9 @@ window.doAssign = function () {
   const codes = f.codes.map(c => c.trim()).filter(Boolean);
   if (codes.length === 0) { errBox.innerHTML = `<div class="err">처방코드를 1개 이상 입력해주세요.</div>`; return; }
 
+  const existing = state.schedules.filter(s => s.date === f.date);
   const { results, warnings } = schedulePatient(
-    f.start, f.end, codes, state.prescriptions, state.rooms, state.schedules, f.date
+    f.name.trim(), f.start, f.end, codes, state.prescriptions, existing, f.date
   );
 
   const pid = nextId();
@@ -401,7 +492,8 @@ window.doAssign = function () {
   for (const r of results) {
     state.schedules.push({
       id: nextId(), patientId: pid, patientName: f.name.trim(),
-      code: r.code, name: r.name, room: r.room, slot: r.slot, bed: r.bed, date: f.date,
+      code: r.code, name: r.name, overlayCode: r.overlayCode, overlayName: r.overlayName,
+      room: r.room, slot: r.slot, station: r.station, label: r.label, date: f.date,
     });
   }
   save();
@@ -423,14 +515,15 @@ function viewPatient() {
 
   const body = rows.length === 0
     ? `<p class="empty">해당 날짜에 배정된 스케줄이 없습니다.</p>`
-    : `<table><thead><tr><th>시간</th><th>처방코드</th><th>치료명</th><th>치료실</th><th>베드</th><th></th></tr></thead>
+    : `<table><thead><tr><th>시간</th><th>처방코드</th><th>치료명</th><th>치료실</th><th>스테이션</th><th>표시</th><th></th></tr></thead>
        <tbody>${rows.map(s => `
         <tr>
           <td class="mono">${s.slot}~${slotEndTime(s.slot)}</td>
-          <td class="mono" style="color:#1d4ed8">${s.code}</td>
-          <td>${esc(s.name)}</td>
+          <td class="mono" style="color:#1d4ed8">${s.code}${s.overlayCode ? "+" + s.overlayCode : ""}</td>
+          <td>${esc(s.name)}${s.overlayName ? " + " + esc(s.overlayName) : ""}</td>
           <td>${esc(s.room)}</td>
-          <td>${s.bed}</td>
+          <td>${esc(s.station)}</td>
+          <td class="mono" style="color:#4338ca">${esc(s.label)}</td>
           <td><button class="del" onclick="delSchedule(${s.id})">삭제</button></td>
         </tr>`).join("")}</tbody></table>`;
 
@@ -458,24 +551,24 @@ window.pv = function (k, v) { patientView[k] = v; render(); };
 //------------------------------------------------ 치료실별 시간표
 function viewRoom() {
   const room = roomView.room;
-  const beds = state.rooms[room]?.beds || 0;
   const date = roomView.date;
+  const stations = roomStationList(room);
   const here = state.schedules.filter(s => s.room === room && s.date === date);
-  const at = (slot, bed) => here.find(s => s.slot === slot && s.bed === bed);
+  const at = (slot, stName) => here.find(s => s.slot === slot && s.station === stName);
 
   const rooms = Object.keys(state.rooms);
   const grid = `
     <div class="scrollx">
     <table>
-      <thead><tr><th>시간</th>${Array.from({length:beds},(_,i)=>`<th>베드${i+1}</th>`).join("")}</tr></thead>
+      <thead><tr><th>시간</th>${stations.map(st => `<th>${esc(st.name)}</th>`).join("")}</tr></thead>
       <tbody>
         ${TIME_SLOTS.map(slot => `
           <tr>
             <td class="mono muted">${slot}</td>
-            ${Array.from({length:beds},(_,i)=>{
-              const s = at(slot, i+1);
+            ${stations.map(st => {
+              const s = at(slot, st.name);
               return `<td>${ s
-                ? `<div class="cell-name">${esc(s.patientName)}</div><div class="cell-code">${s.code}</div>`
+                ? `<div class="cell-name">${esc(s.label)}</div><div class="cell-code">${s.code}${s.overlayCode ? "+" + s.overlayCode : ""}</div>`
                 : `<span class="muted">-</span>` }</td>`;
             }).join("")}
           </tr>`).join("")}
@@ -490,7 +583,7 @@ function viewRoom() {
         ${rooms.map(r => `<button class="tab ${r === room ? "on" : ""}" onclick="rv('room', '${r}')">${esc(r)}</button>`).join("")}
         <div class="right"><input type="date" value="${date}" onchange="rv('date', this.value)" /></div>
       </div>
-      ${beds > 0 ? grid : `<p class="empty">치료실 정보가 없습니다.</p>`}
+      ${stations.length > 0 ? grid : `<p class="empty">치료실 정보가 없습니다.</p>`}
     </div>`;
 }
 window.rv = function (k, v) { roomView[k] = v; render(); };
@@ -515,13 +608,15 @@ function viewRx() {
     </div>
     <div class="card" style="padding:0; overflow:hidden">
       <table>
-        <thead><tr><th>코드</th><th>치료명</th><th>시간</th><th>치료실</th><th></th></tr></thead>
+        <thead><tr><th>코드</th><th>치료명</th><th>시간</th><th>치료실</th><th>구역</th><th>중첩대상</th><th></th></tr></thead>
         <tbody>${list.map(([code, r]) => `
           <tr>
             <td class="mono" style="color:#1d4ed8">${code}</td>
             <td>${esc(r.name)}</td>
             <td>${r.duration}분</td>
             <td>${esc(r.room)}</td>
+            <td class="mono muted">${r.zones ? esc(r.zones.join(",")) : "-"}</td>
+            <td class="mono muted">${r.overlayTargets ? esc(r.overlayTargets.join(",")) : "-"}</td>
             <td><button class="del" onclick="delRx('${code}')">삭제</button></td>
           </tr>`).join("")}</tbody>
       </table>

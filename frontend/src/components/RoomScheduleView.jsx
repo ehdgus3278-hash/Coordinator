@@ -23,7 +23,7 @@ export default function RoomScheduleView() {
       .catch(e => { setError(e.response?.data?.detail || '조회 실패'); setData(null) })
   }, [roomName, date])
 
-  const bedAt = (slot, bed) => data?.slots.find(s => s.slot_time === slot && s.bed_number === bed)
+  const stationAt = (slot, station) => data?.slots.find(s => s.slot_time === slot && s.station === station)
 
   return (
     <div>
@@ -56,8 +56,8 @@ export default function RoomScheduleView() {
               <thead>
                 <tr className="bg-gray-50 text-gray-600">
                   <th className="border px-3 py-2">시간</th>
-                  {Array.from({ length: data.beds }, (_, i) => i + 1).map(bed => (
-                    <th key={bed} className="border px-3 py-2">베드{bed}</th>
+                  {data.stations.map(st => (
+                    <th key={st} className="border px-3 py-2">{st}</th>
                   ))}
                 </tr>
               </thead>
@@ -65,14 +65,16 @@ export default function RoomScheduleView() {
                 {TIME_SLOTS.map(slot => (
                   <tr key={slot} className="hover:bg-blue-50">
                     <td className="border px-3 py-2 font-mono text-gray-600">{slot}</td>
-                    {Array.from({ length: data.beds }, (_, i) => i + 1).map(bed => {
-                      const s = bedAt(slot, bed)
+                    {data.stations.map(st => {
+                      const s = stationAt(slot, st)
                       return (
-                        <td key={bed} className="border px-3 py-2">
+                        <td key={st} className="border px-3 py-2">
                           {s ? (
                             <div>
-                              <div className="font-medium text-gray-800">{s.patient_name}</div>
-                              <div className="text-xs text-blue-600 font-mono">{s.prescription_code}</div>
+                              <div className="font-medium text-gray-800">{s.label}</div>
+                              <div className="text-xs text-blue-600 font-mono">
+                                {s.prescription_code}{s.overlay_code ? `+${s.overlay_code}` : ''}
+                              </div>
                             </div>
                           ) : (
                             <span className="text-gray-300">-</span>

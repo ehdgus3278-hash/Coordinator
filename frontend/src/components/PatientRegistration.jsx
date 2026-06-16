@@ -183,11 +183,16 @@ export default function PatientRegistration() {
                     <span className="font-mono text-sm font-bold text-gray-700 w-24">
                       {s.slot_time}~{slotEndTime(s.slot_time)}
                     </span>
-                    <span className="font-mono text-sm text-blue-700 font-semibold">{s.prescription_code}</span>
-                    <span className="text-sm text-gray-700">{s.prescription_name}</span>
+                    <span className="font-mono text-sm text-blue-700 font-semibold">
+                      {s.prescription_code}{s.overlay_code ? `+${s.overlay_code}` : ''}
+                    </span>
+                    <span className="text-sm text-gray-700">
+                      {s.prescription_name}{s.overlay_name ? ` + ${s.overlay_name}` : ''}
+                    </span>
+                    <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-mono">{s.label}</span>
                   </div>
                   <span className="text-xs text-gray-500 bg-white/60 px-2 py-0.5 rounded">
-                    {s.room_name} · 베드{s.bed_number}
+                    {s.room_name} · {s.station}
                   </span>
                 </div>
               ))}
