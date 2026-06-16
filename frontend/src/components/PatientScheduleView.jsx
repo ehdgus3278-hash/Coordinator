@@ -7,11 +7,13 @@ export default function PatientScheduleView() {
   const [date, setDate] = useState(today())
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
+  const [deleting, setDeleting] = useState(false)
+
+  const loadPatients = () => api.patients.list().then(r => { setPatients(r.data); return r.data })
 
   useEffect(() => {
-    api.patients.list().then(r => {
-      setPatients(r.data)
-      if (r.data.length > 0) setPatientId(String(r.data[0].id))
+    loadPatients().then(list => {
+      if (list.length > 0) setPatientId(String(list[0].id))
     })
   }, [])
 
@@ -23,12 +25,30 @@ export default function PatientScheduleView() {
       .catch(e => { setError(e.response?.data?.detail || '조회 실패'); setData(null) })
   }, [patientId, date])
 
+  const handleDelete = async () => {
+    if (!patientId) return
+    const patient = patients.find(p => String(p.id) === String(patientId))
+    if (!window.confirm(`${patient?.name ?? '이 환자'}를 삭제하시겠습니까?\n모든 스케줄에서 함께 삭제되며 되돌릴 수 없습니다.`)) return
+    setDeleting(true)
+    setError('')
+    try {
+      await api.patients.remove(patientId)
+      const list = await loadPatients()
+      setPatientId(list.length > 0 ? String(list[0].id) : '')
+      setData(null)
+    } catch (e) {
+      setError(e.response?.data?.detail || '삭제 중 오류가 발생했습니다.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="max-w-3xl">
       <h2 className="text-xl font-bold text-gray-800 mb-6">환자별 시간표</h2>
 
       <div className="bg-white rounded-xl shadow p-6">
-        <div className="flex gap-4 mb-6">
+        <div className="flex gap-4 mb-6 items-end">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">환자 선택</label>
             <select value={patientId} onChange={e => setPatientId(e.target.value)}
@@ -44,6 +64,10 @@ export default function PatientScheduleView() {
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
               className="border rounded-lg px-3 py-2 text-sm" />
           </div>
+          <button onClick={handleDelete} disabled={!patientId || deleting}
+            className="px-3 py-2 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed">
+            {deleting ? '삭제 중...' : '환자 삭제(퇴원)'}
+          </button>
         </div>
 
         {error && <p className="text-sm text-red-600 mb-4">{error}</p>}

@@ -55,6 +55,12 @@
     padding: 11px 18px; font-size: 14px; cursor: pointer; font-family: inherit;
   }
   button.ghost:hover { background: #f9fafb; }
+  button.danger {
+    background: #fff; color: #dc2626; border: 1px solid #fca5a5; border-radius: 8px;
+    padding: 11px 18px; font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+  button.danger:hover { background: #fef2f2; }
+  button.danger:disabled { opacity: .4; cursor: not-allowed; }
   button.linkbtn { background: none; border: none; color: #2563eb; font-size: 13px; cursor: pointer; font-family: inherit; padding: 4px 0; }
   button.linkbtn:hover { text-decoration: underline; }
   button.del { background: none; border: none; color: #ef4444; font-size: 12px; cursor: pointer; font-family: inherit; }
@@ -618,6 +624,9 @@ function viewPatient() {
           <div class="hint">날짜</div>
           <input type="date" value="${patientView.date}" onchange="pv('date', this.value)" />
         </div>
+        <div class="right">
+          <button class="danger" onclick="delPatient(${pid})">환자 삭제(퇴원)</button>
+        </div>
       </div>
       <h3>${esc(patient?.name || "")}님의 시간표</h3>
       ${body}
@@ -712,6 +721,15 @@ window.addRx = function () {
 };
 window.delRx = function (code) { delete state.prescriptions[code]; save(); render(); };
 window.delSchedule = function (id) { state.schedules = state.schedules.filter(s => s.id !== id); save(); render(); };
+// 환자 삭제(퇴원 처리). 해당 환자의 모든 스케줄도 함께 제거한다.
+window.delPatient = function (id) {
+  const patient = state.patients.find(p => p.id === id);
+  if (!confirm(`${patient ? patient.name : "이 환자"}를 삭제하시겠습니까?\n모든 스케줄에서 함께 삭제되며 되돌릴 수 없습니다.`)) return;
+  state.patients = state.patients.filter(p => p.id !== id);
+  state.schedules = state.schedules.filter(s => s.patientId !== id);
+  if (Number(patientView.patientId) === id) patientView.patientId = "";
+  save(); render();
+};
 
 //==================================================================
 render();
