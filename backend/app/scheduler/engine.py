@@ -2,7 +2,7 @@ import math
 from datetime import date
 from typing import Dict, List, Optional, Set, Tuple
 
-from ..constants import LABEL_SUFFIX, TIME_SLOTS
+from ..constants import LABEL_SUFFIX, TIME_SLOTS, ZONE_CAPACITY, ROOM_CAPACITY_OVERRIDE
 
 
 def _slot_index(time_str: str) -> int:
@@ -56,6 +56,15 @@ def _eligible_station_names(zones: Optional[List[str]], stations: List[Dict]) ->
     if not zones:
         return [s["name"] for s in stations]
     return [s["name"] for s in stations if s.get("zone") in zones]
+
+
+def _pool_cap(room_name: str, zone: Optional[str]) -> Optional[int]:
+    """분배용 '한 타임당 최대 인원' 제한을 반환. 제한이 없으면 None(물리적 스테이션 수만 적용)."""
+    if zone and room_name in ZONE_CAPACITY and zone in ZONE_CAPACITY[room_name]:
+        return ZONE_CAPACITY[room_name][zone]
+    if not zone and room_name in ROOM_CAPACITY_OVERRIDE:
+        return ROOM_CAPACITY_OVERRIDE[room_name]
+    return None
 
 
 def _build_units(
@@ -166,6 +175,7 @@ def schedule_patient(
 
     for room_name, room_units in room_groups:
         all_stations = room_station_list(room_name, room_stations_map, room_capacity_map)
+        station_zone = {s["name"]: s.get("zone") for s in all_stations}
 
         for unit in room_units:
             code, overlay_code, rx = unit["code"], unit["overlay"], unit["rx"]
@@ -181,23 +191,42 @@ def schedule_patient(
                 if i + n_slots - 1 > end_idx:
                     break
 
-                # Priority 4: 필요한 모든 슬롯에서 해당 zone 의 빈 스테이션이 있는지 확인
-                occupied: Set[str] = set()
+                # Priority 4: 필요한 모든 슬롯에서 해당 zone 의 빈 스테이션 + 분배 한도를 확인
+                slot_occupied: List[Set[str]] = []
                 for j in range(n_slots):
-                    occupied |= slot_stations.get(room_name, {}).get(TIME_SLOTS[i + j], set())
+                    slot = TIME_SLOTS[i + j]
+                    occ = set(slot_stations.get(room_name, {}).get(slot, set()))
 
-                # 이번 배정 실행 중 이미 점유된 스테이션도 고려
-                for res in results:
-                    if res["room_name"] != room_name or not res.get("station"):
-                        continue
-                    res_i = _slot_index(res["slot_time"])
-                    res_n = _slots_needed(
-                        prescription_map.get(res["prescription_code"], {}).get("duration", 30)
-                    )
-                    if res_i < i + n_slots and res_i + res_n > i:
-                        occupied.add(res["station"])
+                    # 이번 배정 실행 중 이미 점유된 스테이션도 고려
+                    for res in results:
+                        if res["room_name"] != room_name or not res.get("station"):
+                            continue
+                        res_i = _slot_index(res["slot_time"])
+                        res_n = _slots_needed(
+                            prescription_map.get(res["prescription_code"], {}).get("duration", 30)
+                        )
+                        if res_i <= i + j < res_i + res_n:
+                            occ.add(res["station"])
 
-                station = next((nm for nm in eligible if nm not in occupied), None)
+                    slot_occupied.append(occ)
+
+                def _feasible(name: str) -> bool:
+                    zone = station_zone.get(name)
+                    cap = _pool_cap(room_name, zone)
+                    for occ in slot_occupied:
+                        if name in occ:
+                            return False
+                        if cap is not None:
+                            count = (
+                                sum(1 for s in occ if station_zone.get(s) == zone)
+                                if zone
+                                else len(occ)
+                            )
+                            if count >= cap:
+                                return False
+                    return True
+
+                station = next((nm for nm in eligible if _feasible(nm)), None)
                 if station is None:
                     continue
 

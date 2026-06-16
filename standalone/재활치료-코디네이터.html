@@ -66,6 +66,8 @@
   button.tab.on { background: #2563eb; color: #fff; }
   .codeRow { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
   .codeRow input { flex: 1; }
+  .codeRow select { width: auto; flex: 0 0 auto; }
+  .codeRow select:last-of-type { flex: 1; }
   .codeRow .x { color: #f87171; background: none; border: none; font-size: 20px; cursor: pointer; line-height: 1; padding: 0 4px; }
   .actions { display: flex; gap: 12px; margin-top: 8px; }
   .actions button { flex: 0 0 auto; }
@@ -141,6 +143,17 @@ const ROOM_STATIONS = {
 
 // 처방코드별 표시 라벨 접미사 (예: 홍길동1(301), 홍길동M(102), 홍길동T(10204))
 const LABEL_SUFFIX = { "MM301": "1", "MM302": "2", "MM102": "M", "MM10204": "T" };
+
+// 분배를 위한 "한 타임당 최대 인원" 제한 (백엔드 constants.py 와 동일).
+// 물리적 스테이션 수보다 적게 설정하면 일부 스테이션은 항상 비워두고 다음 시간대로 자동 분산된다.
+const ZONE_CAPACITY = {
+  [BRAIN_ROOM]: { M: 3, B: 1, T: 2 },
+};
+// zone 구분이 없는(번호 베드) 치료실의 한 타임당 최대 인원 제한.
+const ROOM_CAPACITY_OVERRIDE = {
+  [OT_ROOM]: 2,
+  [ST_ROOM]: 2,
+};
 
 const DEFAULT_PRESCRIPTIONS = {
   "MM105":   { name: "중추신경계치료",         duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"] },
@@ -229,6 +242,13 @@ function eligibleStationNames(zones, stations) {
   return stations.filter(s => zones.includes(s.zone)).map(s => s.name);
 }
 
+// 분배용 "한 타임당 최대 인원" 제한을 반환. 제한이 없으면 null(물리적 스테이션 수만 적용).
+function poolCap(room, zone) {
+  if (zone && ZONE_CAPACITY[room] && zone in ZONE_CAPACITY[room]) return ZONE_CAPACITY[room][zone];
+  if (!zone && room in ROOM_CAPACITY_OVERRIDE) return ROOM_CAPACITY_OVERRIDE[room];
+  return null;
+}
+
 // 중첩 사용 코드(예: MM151)를 대상 코드(예: MM301/MM302)와 짝지어 하나의 스케줄링 단위로 묶는다.
 function buildUnits(orders, rxMap, warnings) {
   const n = orders.length;
@@ -306,6 +326,8 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
 
   for (const [room, roomUnits] of roomGroups) {
     const allStations = roomStationList(room);
+    const stationZone = {};
+    for (const s of allStations) stationZone[s.name] = s.zone;
 
     for (const unit of roomUnits) {
       const { code, overlay: overlayCode, rx } = unit;
@@ -321,20 +343,38 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
       for (let i = currentIdx; i < TIME_SLOTS.length; i++) {
         if (i + n - 1 > endIdx) break;
 
-        // 우선순위 4: 필요한 모든 슬롯에서 해당 zone 의 빈 스테이션이 있는지 확인
-        const occupied = new Set();
-        for (let j = 0; j < n; j++)
-          for (const st of (slotStations[room]?.[TIME_SLOTS[i + j]] ?? [])) occupied.add(st);
+        // 우선순위 4: 필요한 모든 슬롯에서 해당 zone 의 빈 스테이션 + 분배 한도를 확인
+        const slotOccupied = [];
+        for (let j = 0; j < n; j++) {
+          const slot = TIME_SLOTS[i + j];
+          const occ = new Set(slotStations[room]?.[slot] ?? []);
 
-        // 이번 배정 실행 중 이미 점유된 스테이션도 고려
-        for (const res of results) {
-          if (res.room !== room || !res.station) continue;
-          const ri = slotIndex(res.slot);
-          const rn = slotsNeeded(rxMap[res.code]?.duration ?? 30);
-          if (ri < i + n && ri + rn > i) occupied.add(res.station);
+          // 이번 배정 실행 중 이미 점유된 스테이션도 고려
+          for (const res of results) {
+            if (res.room !== room || !res.station) continue;
+            const ri = slotIndex(res.slot);
+            const rn = slotsNeeded(rxMap[res.code]?.duration ?? 30);
+            if (ri <= i + j && i + j < ri + rn) occ.add(res.station);
+          }
+          slotOccupied.push(occ);
         }
 
-        const station = eligible.find(nm => !occupied.has(nm));
+        const feasible = (name) => {
+          const zone = stationZone[name];
+          const cap = poolCap(room, zone);
+          for (const occ of slotOccupied) {
+            if (occ.has(name)) return false;
+            if (cap !== null) {
+              const count = zone
+                ? [...occ].filter(s => stationZone[s] === zone).length
+                : occ.size;
+              if (count >= cap) return false;
+            }
+          }
+          return true;
+        };
+
+        const station = eligible.find(feasible);
         if (!station) continue;
 
         const overlayName = overlayCode ? (rxMap[overlayCode]?.name ?? null) : null;
@@ -365,7 +405,7 @@ const TABS = [
 ];
 let activeTab = "register";
 let lastResult = null;       // 마지막 배정 결과
-let registerForm = { name: "", date: today(), start: "08:00", end: "17:00", codes: [""] };
+let registerForm = { name: "", date: today(), start: "08:00", end: "17:00", codes: [{ room: "", code: "" }] };
 let patientView = { patientId: "", date: today() };
 let roomView = { room: BRAIN_ROOM, date: today() };
 
@@ -398,15 +438,22 @@ function render() {
 //------------------------------------------------ 환자 등록
 function viewRegister() {
   const f = registerForm;
-  const codeRows = f.codes.map((c, i) => `
+  const roomOptions = Object.keys(state.rooms);
+  const codeRows = f.codes.map((c, i) => {
+    const codeOptions = Object.entries(state.prescriptions).filter(([, r]) => r.room === c.room);
+    return `
     <div class="codeRow">
-      <input class="mono" placeholder="예: MM105" value="${esc(c)}"
-        oninput="onCode(${i}, this.value)" list="rxlist" />
+      <select onchange="onCodeRoom(${i}, this.value)">
+        <option value="" ${c.room === "" ? "selected" : ""}>치료실 선택</option>
+        ${roomOptions.map(r => `<option value="${esc(r)}" ${r === c.room ? "selected" : ""}>${esc(r)}</option>`).join("")}
+      </select>
+      <select onchange="onCodeCode(${i}, this.value)" ${c.room ? "" : "disabled"} class="mono">
+        <option value="">${c.room ? "처방코드 선택" : "먼저 치료실을 선택하세요"}</option>
+        ${codeOptions.map(([code, r]) => `<option value="${code}" ${code === c.code ? "selected" : ""}>${code} - ${esc(r.name)}</option>`).join("")}
+      </select>
       ${f.codes.length > 1 ? `<button class="x" onclick="rmCode(${i})">&times;</button>` : ""}
-    </div>`).join("");
-
-  const rxOptions = Object.entries(state.prescriptions)
-    .map(([code, r]) => `<option value="${code}">${code} - ${esc(r.name)}</option>`).join("");
+    </div>`;
+  }).join("");
 
   let resultHtml = "";
   if (lastResult) {
@@ -457,7 +504,6 @@ function viewRegister() {
       <div class="row">
         <label>처방코드</label>
         ${codeRows}
-        <datalist id="rxlist">${rxOptions}</datalist>
         <button class="linkbtn" onclick="addCode()">+ 처방코드 추가</button>
       </div>
       <div id="regErr"></div>
@@ -470,16 +516,17 @@ function viewRegister() {
 }
 
 window.rf = function (k, v) { registerForm[k] = v; };
-window.onCode = function (i, v) { registerForm.codes[i] = v.toUpperCase().trim(); };
-window.addCode = function () { registerForm.codes.push(""); render(); };
+window.onCodeRoom = function (i, v) { registerForm.codes[i] = { room: v, code: "" }; render(); };
+window.onCodeCode = function (i, v) { registerForm.codes[i].code = v; render(); };
+window.addCode = function () { registerForm.codes.push({ room: "", code: "" }); render(); };
 window.rmCode = function (i) { registerForm.codes.splice(i, 1); render(); };
-window.resetForm = function () { registerForm = { name: "", date: today(), start: "08:00", end: "17:00", codes: [""] }; lastResult = null; render(); };
+window.resetForm = function () { registerForm = { name: "", date: today(), start: "08:00", end: "17:00", codes: [{ room: "", code: "" }] }; lastResult = null; render(); };
 
 window.doAssign = function () {
   const f = registerForm;
   const errBox = document.getElementById("regErr");
   if (!f.name.trim()) { errBox.innerHTML = `<div class="err">환자명을 입력해주세요.</div>`; return; }
-  const codes = f.codes.map(c => c.trim()).filter(Boolean);
+  const codes = f.codes.map(c => c.code).filter(Boolean);
   if (codes.length === 0) { errBox.innerHTML = `<div class="err">처방코드를 1개 이상 입력해주세요.</div>`; return; }
 
   const existing = state.schedules.filter(s => s.date === f.date);

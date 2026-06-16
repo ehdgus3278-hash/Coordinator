@@ -3,37 +3,31 @@ import { api, TIME_SLOTS, slotEndTime, today } from '../api'
 
 const SLOT_OPTIONS = TIME_SLOTS.map(t => ({ value: t, label: t }))
 
-function CodeBadge({ code, onRemove }) {
-  return (
-    <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-mono">
-      {code}
-      <button onClick={onRemove} className="text-blue-500 hover:text-red-600 font-bold leading-none">&times;</button>
-    </span>
-  )
-}
-
 export default function PatientRegistration() {
   const [name, setName] = useState('')
   const [date, setDate] = useState(today())
   const [availStart, setAvailStart] = useState('08:00')
   const [availEnd, setAvailEnd] = useState('17:00')
-  const [orders, setOrders] = useState([''])
+  const [orders, setOrders] = useState([{ room: '', code: '' }])
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [prescriptions, setPrescriptions] = useState([])
+  const [rooms, setRooms] = useState([])
 
   useEffect(() => {
     api.prescriptions.list().then(r => setPrescriptions(r.data)).catch(() => {})
+    api.rooms.list().then(r => setRooms(r.data)).catch(() => {})
   }, [])
 
-  const addOrder = () => setOrders(prev => [...prev, ''])
+  const addOrder = () => setOrders(prev => [...prev, { room: '', code: '' }])
   const removeOrder = i => setOrders(prev => prev.filter((_, idx) => idx !== i))
-  const updateOrder = (i, val) => setOrders(prev => prev.map((o, idx) => idx === i ? val.toUpperCase().trim() : o))
+  const updateOrderRoom = (i, room) => setOrders(prev => prev.map((o, idx) => idx === i ? { room, code: '' } : o))
+  const updateOrderCode = (i, code) => setOrders(prev => prev.map((o, idx) => idx === i ? { ...o, code } : o))
 
   const handleSubmit = async () => {
     if (!name.trim()) { setError('환자명을 입력해주세요.'); return }
-    const validOrders = orders.map(o => o.trim()).filter(Boolean)
+    const validOrders = orders.map(o => o.code).filter(Boolean)
     if (validOrders.length === 0) { setError('처방코드를 1개 이상 입력해주세요.'); return }
 
     setLoading(true)
@@ -57,7 +51,7 @@ export default function PatientRegistration() {
 
   const reset = () => {
     setName('')
-    setOrders([''])
+    setOrders([{ room: '', code: '' }])
     setResult(null)
     setError('')
   }
@@ -111,26 +105,36 @@ export default function PatientRegistration() {
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">처방코드</label>
           <div className="space-y-2">
-            {orders.map((code, i) => (
-              <div key={i} className="flex gap-2 items-center">
-                <input
-                  list="rx-list"
-                  value={code}
-                  onChange={e => updateOrder(i, e.target.value)}
-                  placeholder="예: MM105"
-                  className="flex-1 border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
-                {orders.length > 1 && (
-                  <button onClick={() => removeOrder(i)}
-                    className="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button>
-                )}
-              </div>
-            ))}
-            <datalist id="rx-list">
-              {prescriptions.map(rx => (
-                <option key={rx.code} value={rx.code}>{rx.code} - {rx.name}</option>
-              ))}
-            </datalist>
+            {orders.map((order, i) => {
+              const roomCodes = prescriptions.filter(rx => rx.room_name === order.room)
+              return (
+                <div key={i} className="flex gap-2 items-center">
+                  <select
+                    value={order.room}
+                    onChange={e => updateOrderRoom(i, e.target.value)}
+                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    <option value="">치료실 선택</option>
+                    {rooms.map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
+                  </select>
+                  <select
+                    value={order.code}
+                    onChange={e => updateOrderCode(i, e.target.value)}
+                    disabled={!order.room}
+                    className="flex-1 border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
+                  >
+                    <option value="">{order.room ? '처방코드 선택' : '먼저 치료실을 선택하세요'}</option>
+                    {roomCodes.map(rx => (
+                      <option key={rx.code} value={rx.code}>{rx.code} - {rx.name}</option>
+                    ))}
+                  </select>
+                  {orders.length > 1 && (
+                    <button onClick={() => removeOrder(i)}
+                      className="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button>
+                  )}
+                </div>
+              )
+            })}
           </div>
           <button onClick={addOrder}
             className="mt-2 text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1">
