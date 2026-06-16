@@ -4,9 +4,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import Base, SessionLocal, engine
-from .models import PrescriptionCode, Room, Therapist
-from .constants import BRAIN_ROOM, BRAIN_THERAPISTS, PRESCRIPTION_MASTER, ROOM_MASTER, ROOM_STATIONS
+from .models import PrescriptionCode, Room, Schedule, Therapist
+from .constants import (
+    AM_SLOTS, BRAIN_ROOM, BRAIN_THERAPISTS, PRESCRIPTION_MASTER, ROOM_MASTER, ROOM_STATIONS,
+)
 from .routers import patients, prescriptions, rooms, schedules, therapists
+
+# MM301/MM302/MM151/MM105는 오전(AM)/오후(PM) 코드로 대체되었다. 이미 이 코드들로
+# 생성된 기존 데이터가 있으면 각 스케줄의 실제 슬롯 시간에 맞춰 AM/PM 코드로 옮긴다.
+LEGACY_PRESCRIPTION_CODES = ["MM105", "MM301", "MM302", "MM151"]
 
 
 def _seed():
@@ -17,8 +23,9 @@ def _seed():
                 db.add(Room(name=name, beds=data["beds"], stations=ROOM_STATIONS.get(name)))
             db.commit()
 
-        if db.query(PrescriptionCode).count() == 0:
-            for code, data in PRESCRIPTION_MASTER.items():
+        existing_codes = {c for (c,) in db.query(PrescriptionCode.code).all()}
+        for code, data in PRESCRIPTION_MASTER.items():
+            if code not in existing_codes:
                 db.add(PrescriptionCode(
                     code=code, name=data["name"],
                     duration=data["duration"], room_name=data["room"],
@@ -26,7 +33,9 @@ def _seed():
                     overlay_targets=data.get("overlay_targets"),
                     time_window=data.get("time_window"),
                 ))
-            db.commit()
+        db.commit()
+
+        _migrate_legacy_codes(db)
 
         if db.query(Therapist).count() == 0:
             for name in BRAIN_THERAPISTS:
@@ -34,6 +43,32 @@ def _seed():
             db.commit()
     finally:
         db.close()
+
+
+def _migrate_legacy_codes(db):
+    for legacy in LEGACY_PRESCRIPTION_CODES:
+        old = db.query(PrescriptionCode).filter(PrescriptionCode.code == legacy).first()
+        if not old:
+            continue
+        # 일반 ORM 속성 대입 대신 bulk update를 쓰는 이유: PrescriptionCode.schedules
+        # 관계가 delete cascade가 아니라서, old를 삭제할 때 아직 이 관계에 걸려 있는
+        # Schedule의 FK를 SQLAlchemy가 먼저 NULL로 만들어버려 NOT NULL 제약을 위반한다.
+        # bulk update + commit으로 참조를 먼저 끊어두면 delete 시점에는 참조가 없다.
+        db.query(Schedule).filter(
+            Schedule.prescription_code == legacy, Schedule.slot_time.in_(AM_SLOTS)
+        ).update({"prescription_code": legacy + "AM"}, synchronize_session=False)
+        db.query(Schedule).filter(
+            Schedule.prescription_code == legacy, ~Schedule.slot_time.in_(AM_SLOTS)
+        ).update({"prescription_code": legacy + "PM"}, synchronize_session=False)
+        db.query(Schedule).filter(
+            Schedule.overlay_code == legacy, Schedule.slot_time.in_(AM_SLOTS)
+        ).update({"overlay_code": legacy + "AM"}, synchronize_session=False)
+        db.query(Schedule).filter(
+            Schedule.overlay_code == legacy, ~Schedule.slot_time.in_(AM_SLOTS)
+        ).update({"overlay_code": legacy + "PM"}, synchronize_session=False)
+        db.commit()
+        db.delete(old)
+        db.commit()
 
 
 @asynccontextmanager

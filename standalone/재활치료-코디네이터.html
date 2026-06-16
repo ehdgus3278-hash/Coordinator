@@ -208,8 +208,52 @@ function loadState() {
   };
 }
 
+// MM301/MM302/MM151/MM105는 오전(AM)/오후(PM) 코드로 대체되었다. 이전 버전에서 저장된
+// 기존 데이터가 있으면 각 스케줄의 실제 슬롯 시간에 맞춰 AM/PM 코드로 옮긴다.
+const LEGACY_PRESCRIPTION_CODES = ["MM105", "MM301", "MM302", "MM151"];
+function migrateLegacyCodes(state) {
+  const legacySet = new Set(LEGACY_PRESCRIPTION_CODES);
+  let touched = false;
+
+  for (const s of state.schedules) {
+    let changed = false;
+    if (legacySet.has(s.code)) {
+      const newCode = s.code + (AM_SLOTS.includes(s.slot) ? "AM" : "PM");
+      s.code = newCode;
+      s.name = DEFAULT_PRESCRIPTIONS[newCode]?.name ?? s.name;
+      changed = true;
+    }
+    if (s.overlayCode && legacySet.has(s.overlayCode)) {
+      const newOverlay = s.overlayCode + (AM_SLOTS.includes(s.slot) ? "AM" : "PM");
+      s.overlayCode = newOverlay;
+      s.overlayName = DEFAULT_PRESCRIPTIONS[newOverlay]?.name ?? s.overlayName;
+      changed = true;
+    }
+    if (changed) {
+      s.label = makeLabel(s.patientName, s.code, s.overlayCode);
+      touched = true;
+    }
+  }
+
+  for (const legacy of LEGACY_PRESCRIPTION_CODES) {
+    if (state.prescriptions[legacy]) {
+      for (const suffix of ["AM", "PM"]) {
+        const newCode = legacy + suffix;
+        if (!state.prescriptions[newCode] && DEFAULT_PRESCRIPTIONS[newCode]) {
+          state.prescriptions[newCode] = structuredClone(DEFAULT_PRESCRIPTIONS[newCode]);
+        }
+      }
+      delete state.prescriptions[legacy];
+      touched = true;
+    }
+  }
+
+  return touched;
+}
+
 let state = loadState();
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+if (migrateLegacyCodes(state)) save();
 function nextId() { return state.seq++; }
 
 //==================================================================
