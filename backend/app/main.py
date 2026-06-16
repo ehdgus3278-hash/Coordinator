@@ -24,6 +24,7 @@ def _seed():
                     duration=data["duration"], room_name=data["room"],
                     station_zones=data.get("zones"),
                     overlay_targets=data.get("overlay_targets"),
+                    time_window=data.get("time_window"),
                 ))
             db.commit()
 

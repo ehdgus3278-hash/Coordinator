@@ -126,6 +126,10 @@ const TIME_SLOTS = [
   "13:30","14:00","14:30","15:00","15:30","16:00","16:30",
 ];
 
+// AM/PM 코드(예: MM301AM/MM301PM)가 배정 가능한 슬롯 범위.
+const AM_SLOTS = TIME_SLOTS.filter(t => t < "12:00");
+const PM_SLOTS = TIME_SLOTS.filter(t => t >= "12:00");
+
 const BRAIN_ROOM = "뇌재활치료실";
 const OT_ROOM = "작업치료실";
 const ST_ROOM = "언어치료실";
@@ -141,13 +145,14 @@ const ROOM_STATIONS = {
   ],
 };
 
-// 처방코드별 표시 라벨 접미사 (예: 홍길동1(301), 홍길동M(102), 홍길동T(10204))
-const LABEL_SUFFIX = { "MM301": "1", "MM302": "2", "MM102": "M", "MM10204": "T" };
+// 처방코드별 표시 라벨 접미사 (예: 홍길동1(301AM), 홍길동M(102), 홍길동T(10204))
+const LABEL_SUFFIX = { "MM301AM": "1", "MM301PM": "1", "MM302AM": "2", "MM302PM": "2", "MM102": "M", "MM10204": "T" };
 
 // 분배를 위한 "한 타임당 최대 인원" 제한 (백엔드 constants.py 와 동일).
 // 물리적 스테이션 수보다 적게 설정하면 일부 스테이션은 항상 비워두고 다음 시간대로 자동 분산된다.
+// THERAPIST구역("1:1치료실" = 치료사별 전담 시간)은 4인이 있지만 한 타임 최대 2명까지만 배정.
 const ZONE_CAPACITY = {
-  [BRAIN_ROOM]: { M: 3, B: 1, T: 2 },
+  [BRAIN_ROOM]: { M: 3, B: 1, T: 2, THERAPIST: 2 },
 };
 // zone 구분이 없는(번호 베드) 치료실의 한 타임당 최대 인원 제한.
 const ROOM_CAPACITY_OVERRIDE = {
@@ -155,13 +160,18 @@ const ROOM_CAPACITY_OVERRIDE = {
   [ST_ROOM]: 2,
 };
 
+// MM301/MM302/MM151/MM105는 오전(AM)/오후(PM) 코드로 완전히 대체되었다.
 const DEFAULT_PRESCRIPTIONS = {
-  "MM105":   { name: "중추신경계치료",         duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"] },
-  "MM301":   { name: "보행훈련",               duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
-  "MM302":   { name: "보행훈련2(임시명)",       duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
-  "MM102":   { name: "신경계운동치료(임시명)",   duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
-  "MM151":   { name: "중첩치료(임시명)",        duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301","MM302"] },
-  "MM10204": { name: "보조치료(임시명)",        duration: 30, room: BRAIN_ROOM, zones: ["T"] },
+  "MM105AM": { name: "중추신경계치료(오전)",      duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"], timeWindow: "AM" },
+  "MM105PM": { name: "중추신경계치료(오후)",      duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"], timeWindow: "PM" },
+  "MM301AM": { name: "보행훈련(오전)",            duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "AM" },
+  "MM301PM": { name: "보행훈련(오후)",            duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "PM" },
+  "MM302AM": { name: "보행훈련2(임시명)(오전)",    duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "AM" },
+  "MM302PM": { name: "보행훈련2(임시명)(오후)",    duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "PM" },
+  "MM102":   { name: "신경계운동치료(임시명)",     duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
+  "MM151AM": { name: "중첩치료(임시명)(오전)",     duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301AM","MM302AM"], timeWindow: "AM" },
+  "MM151PM": { name: "중첩치료(임시명)(오후)",     duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301PM","MM302PM"], timeWindow: "PM" },
+  "MM10204": { name: "보조치료(임시명)",          duration: 30, room: BRAIN_ROOM, zones: ["T"] },
   "MX112": { name: "작업치료",     duration: 15, room: OT_ROOM },
   "MX115": { name: "인지작업치료", duration: 30, room: OT_ROOM },
   "MS201": { name: "언어치료",     duration: 30, room: ST_ROOM },
@@ -249,7 +259,19 @@ function poolCap(room, zone) {
   return null;
 }
 
-// 중첩 사용 코드(예: MM151)를 대상 코드(예: MM301/MM302)와 짝지어 하나의 스케줄링 단위로 묶는다.
+// AM/PM 코드가 배정 가능한 슬롯 집합을 반환. 시간대 제한이 없으면 null.
+function windowSlots(timeWindow) {
+  if (timeWindow === "AM") return new Set(AM_SLOTS);
+  if (timeWindow === "PM") return new Set(PM_SLOTS);
+  return null;
+}
+
+// 주어진 점유 집합 중 같은 zone(분배 풀)에 속하는 개수. zone이 없으면 전체 점유 수.
+function zoneCount(occ, zone, stationZone) {
+  return zone ? [...occ].filter(s => stationZone[s] === zone).length : occ.size;
+}
+
+// 중첩 사용 코드(예: MM151AM)를 대상 코드(예: MM301AM/MM302AM)와 짝지어 하나의 스케줄링 단위로 묶는다.
 function buildUnits(orders, rxMap, warnings) {
   const n = orders.length;
   const consumed = new Array(n).fill(false);
@@ -333,17 +355,21 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
       const { code, overlay: overlayCode, rx } = unit;
       const n = slotsNeeded(rx.duration);
       const eligible = eligibleStationNames(rx.zones, allStations);
+      const window = windowSlots(rx.timeWindow);
 
       if (eligible.length === 0) {
         warnings.push(`${code}(${rx.name}): 배정 가능한 스테이션이 없습니다.`);
         continue;
       }
 
-      let assigned = false;
+      // 우선순위 4: 전체 가능 시간대를 훑어, 분배 한도를 지키면서 가장 한산한
+      // (점유 인원이 가장 적은) 슬롯을 고른다 (로드밸런싱). currentIdx는 하한선으로만 사용.
+      let best = null; // { load, i, station }
       for (let i = currentIdx; i < TIME_SLOTS.length; i++) {
         if (i + n - 1 > endIdx) break;
+        if (window && Array.from({ length: n }, (_, j) => TIME_SLOTS[i + j]).some(s => !window.has(s))) continue;
 
-        // 우선순위 4: 필요한 모든 슬롯에서 해당 zone 의 빈 스테이션 + 분배 한도를 확인
+        // 필요한 모든 슬롯에서 해당 zone 의 빈 스테이션 + 분배 한도를 확인
         const slotOccupied = [];
         for (let j = 0; j < n; j++) {
           const slot = TIME_SLOTS[i + j];
@@ -364,12 +390,7 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
           const cap = poolCap(room, zone);
           for (const occ of slotOccupied) {
             if (occ.has(name)) return false;
-            if (cap !== null) {
-              const count = zone
-                ? [...occ].filter(s => stationZone[s] === zone).length
-                : occ.size;
-              if (count >= cap) return false;
-            }
+            if (cap !== null && zoneCount(occ, zone, stationZone) >= cap) return false;
           }
           return true;
         };
@@ -377,18 +398,25 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
         const station = eligible.find(feasible);
         if (!station) continue;
 
-        const overlayName = overlayCode ? (rxMap[overlayCode]?.name ?? null) : null;
-        results.push({
-          code, name: rx.name, overlayCode, overlayName,
-          room, slot: TIME_SLOTS[i], station,
-          label: makeLabel(patientName, code, overlayCode),
-        });
-        for (let j = 0; j < n; j++) slotStations[room][TIME_SLOTS[i + j]].add(station);
-        currentIdx = i + n;
-        assigned = true;
-        break;
+        const zone = stationZone[station];
+        const load = Math.max(...slotOccupied.map(occ => zoneCount(occ, zone, stationZone)));
+        if (best === null || load < best.load) best = { load, i, station };
       }
-      if (!assigned) warnings.push(`${code}(${rx.name}): 가용 슬롯이 없어 배정하지 못했습니다.`);
+
+      if (best === null) {
+        warnings.push(`${code}(${rx.name}): 가용 슬롯이 없어 배정하지 못했습니다.`);
+        continue;
+      }
+
+      const { i, station } = best;
+      const overlayName = overlayCode ? (rxMap[overlayCode]?.name ?? null) : null;
+      results.push({
+        code, name: rx.name, overlayCode, overlayName,
+        room, slot: TIME_SLOTS[i], station,
+        label: makeLabel(patientName, code, overlayCode),
+      });
+      for (let j = 0; j < n; j++) slotStations[room][TIME_SLOTS[i + j]].add(station);
+      currentIdx = i + n;
     }
   }
   return { results, warnings };
@@ -498,7 +526,9 @@ function viewRegister() {
             ${TIME_SLOTS.map(t => `<option ${t === f.start ? "selected" : ""}>${t}</option>`).join("")}
           </select>
           <span class="muted">~</span>
-          <input type="time" value="${f.end}" oninput="rf('end', this.value)" style="width:auto" />
+          <select style="width:auto" onchange="rf('end', this.value)">
+            ${TIME_SLOTS.map(t => slotEndTime(t)).map(t => `<option ${t === f.end ? "selected" : ""}>${t}</option>`).join("")}
+          </select>
         </div>
       </div>
       <div class="row">
@@ -644,8 +674,8 @@ function viewRx() {
     <div class="card" style="max-width:720px">
       <h3>새 처방코드 추가</h3>
       <div class="inline" style="gap:12px; align-items:flex-end">
-        <div style="flex:1"><div class="hint">코드</div><input id="nrxCode" class="mono" placeholder="MM105" /></div>
-        <div style="flex:1"><div class="hint">치료명</div><input id="nrxName" placeholder="중추신경계치료" /></div>
+        <div style="flex:1"><div class="hint">코드</div><input id="nrxCode" class="mono" placeholder="MM105AM" /></div>
+        <div style="flex:1"><div class="hint">치료명</div><input id="nrxName" placeholder="중추신경계치료(오전)" /></div>
         <div><div class="hint">시간(분)</div><input id="nrxDur" type="number" value="30" min="5" step="5" style="width:90px" /></div>
         <div><div class="hint">치료실</div>
           <select id="nrxRoom">${rooms.map(r => `<option>${esc(r)}</option>`).join("")}</select></div>

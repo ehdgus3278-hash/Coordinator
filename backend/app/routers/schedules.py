@@ -29,6 +29,7 @@ def _rx_map(db: Session) -> dict:
             "room_name": rx.room_name,
             "zones": rx.station_zones,
             "overlay_targets": rx.overlay_targets,
+            "time_window": rx.time_window,
         }
         for rx in db.query(PrescriptionCode).all()
     }

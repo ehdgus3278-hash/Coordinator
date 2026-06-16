@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { api, TIME_SLOTS, slotEndTime, today } from '../api'
 
 const SLOT_OPTIONS = TIME_SLOTS.map(t => ({ value: t, label: t }))
+const END_OPTIONS = TIME_SLOTS.map(t => ({ value: slotEndTime(t), label: slotEndTime(t) }))
 
 export default function PatientRegistration() {
   const [name, setName] = useState('')
@@ -97,8 +98,10 @@ export default function PatientRegistration() {
               {SLOT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
             <span className="text-gray-500">~</span>
-            <input type="time" value={availEnd} onChange={e => setAvailEnd(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            <select value={availEnd} onChange={e => setAvailEnd(e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+              {END_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
           </div>
         </div>
 

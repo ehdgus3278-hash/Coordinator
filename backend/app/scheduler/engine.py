@@ -2,7 +2,7 @@ import math
 from datetime import date
 from typing import Dict, List, Optional, Set, Tuple
 
-from ..constants import LABEL_SUFFIX, TIME_SLOTS, ZONE_CAPACITY, ROOM_CAPACITY_OVERRIDE
+from ..constants import LABEL_SUFFIX, TIME_SLOTS, ZONE_CAPACITY, ROOM_CAPACITY_OVERRIDE, AM_SLOTS, PM_SLOTS
 
 
 def _slot_index(time_str: str) -> int:
@@ -67,11 +67,25 @@ def _pool_cap(room_name: str, zone: Optional[str]) -> Optional[int]:
     return None
 
 
+def _window_slots(time_window: Optional[str]) -> Optional[Set[str]]:
+    """AM/PM 코드가 배정 가능한 슬롯 집합을 반환. 시간대 제한이 없으면 None."""
+    if time_window == "AM":
+        return set(AM_SLOTS)
+    if time_window == "PM":
+        return set(PM_SLOTS)
+    return None
+
+
+def _zone_count(occ: Set[str], zone: Optional[str], station_zone: Dict[str, Optional[str]]) -> int:
+    """주어진 점유 집합 중 같은 zone(분배 풀)에 속하는 개수. zone이 없으면 전체 점유 수."""
+    return sum(1 for s in occ if station_zone.get(s) == zone) if zone else len(occ)
+
+
 def _build_units(
     orders: List[str], prescription_map: Dict, warnings: List[str]
 ) -> List[Dict]:
     """
-    중첩 사용 코드(예: MM151)를 대상 코드(예: MM301/MM302)와 짝지어
+    중첩 사용 코드(예: MM151AM)를 대상 코드(예: MM301AM/MM302AM)와 짝지어
     하나의 스케줄링 단위로 묶는다. 짝을 찾지 못하면 경고만 남기고 버린다.
     반환: [{"code", "overlay", "rx"}, ...] (원래 순서 유지)
     """
@@ -138,10 +152,11 @@ def schedule_patient(
     Greedy scheduler implementing the four priorities:
     1. Group same-room orders together
     2. Minimize room transitions
-    3. Minimize waiting time (earliest consecutive slot)
+    3. Load-balance across the entire available time range (least-occupied slot wins;
+       earliest slot is only a tie-breaker), subject to AM/PM time-window restrictions
     4. Respect room/station capacity
 
-    중첩 사용 코드(MM151 등)는 대상 코드와 같은 스테이션·슬롯을 공유하며 별도 슬롯을 소비하지 않는다.
+    중첩 사용 코드(MM151AM/PM 등)는 대상 코드와 같은 스테이션·슬롯을 공유하며 별도 슬롯을 소비하지 않는다.
 
     Returns (schedule_items, warnings).
     """
@@ -181,17 +196,21 @@ def schedule_patient(
             code, overlay_code, rx = unit["code"], unit["overlay"], unit["rx"]
             n_slots = _slots_needed(rx["duration"])
             eligible = _eligible_station_names(rx.get("zones"), all_stations)
+            window = _window_slots(rx.get("time_window"))
 
             if not eligible:
                 warnings.append(f"{code}({rx['name']}): 배정 가능한 스테이션이 없습니다.")
                 continue
 
-            assigned = False
+            # Priority 4: 전체 가능 시간대를 훑어, 분배 한도를 지키면서 가장 한산한
+            # (점유 인원이 가장 적은) 슬롯을 고른다 (로드밸런싱). current_idx는 하한선으로만 사용.
+            best: Optional[Tuple[int, int, str]] = None  # (load, slot_idx, station)
             for i in range(current_idx, len(TIME_SLOTS)):
                 if i + n_slots - 1 > end_idx:
                     break
+                if window is not None and any(TIME_SLOTS[i + j] not in window for j in range(n_slots)):
+                    continue
 
-                # Priority 4: 필요한 모든 슬롯에서 해당 zone 의 빈 스테이션 + 분배 한도를 확인
                 slot_occupied: List[Set[str]] = []
                 for j in range(n_slots):
                     slot = TIME_SLOTS[i + j]
@@ -216,43 +235,42 @@ def schedule_patient(
                     for occ in slot_occupied:
                         if name in occ:
                             return False
-                        if cap is not None:
-                            count = (
-                                sum(1 for s in occ if station_zone.get(s) == zone)
-                                if zone
-                                else len(occ)
-                            )
-                            if count >= cap:
-                                return False
+                        if cap is not None and _zone_count(occ, zone, station_zone) >= cap:
+                            return False
                     return True
 
                 station = next((nm for nm in eligible if _feasible(nm)), None)
                 if station is None:
                     continue
 
-                overlay_name = (
-                    prescription_map.get(overlay_code, {}).get("name") if overlay_code else None
-                )
-                item = {
-                    "prescription_code": code,
-                    "prescription_name": rx["name"],
-                    "overlay_code": overlay_code,
-                    "overlay_name": overlay_name,
-                    "room_name": room_name,
-                    "slot_time": TIME_SLOTS[i],
-                    "station": station,
-                    "label": make_label(patient_name, code, overlay_code),
-                }
-                results.append(item)
+                zone = station_zone.get(station)
+                load = max(_zone_count(occ, zone, station_zone) for occ in slot_occupied)
+                if best is None or load < best[0]:
+                    best = (load, i, station)
 
-                for j in range(n_slots):
-                    slot_stations.setdefault(room_name, {}).setdefault(TIME_SLOTS[i + j], set()).add(station)
-
-                current_idx = i + n_slots
-                assigned = True
-                break
-
-            if not assigned:
+            if best is None:
                 warnings.append(f"{code}({rx['name']}): 가용 슬롯이 없어 배정하지 못했습니다.")
+                continue
+
+            _, i, station = best
+            overlay_name = (
+                prescription_map.get(overlay_code, {}).get("name") if overlay_code else None
+            )
+            item = {
+                "prescription_code": code,
+                "prescription_name": rx["name"],
+                "overlay_code": overlay_code,
+                "overlay_name": overlay_name,
+                "room_name": room_name,
+                "slot_time": TIME_SLOTS[i],
+                "station": station,
+                "label": make_label(patient_name, code, overlay_code),
+            }
+            results.append(item)
+
+            for j in range(n_slots):
+                slot_stations.setdefault(room_name, {}).setdefault(TIME_SLOTS[i + j], set()).add(station)
+
+            current_idx = i + n_slots
 
     return results, warnings

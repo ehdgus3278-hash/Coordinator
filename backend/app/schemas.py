@@ -27,6 +27,7 @@ class PrescriptionCodeBase(BaseModel):
     room_name: str
     station_zones: Optional[List[str]] = None
     overlay_targets: Optional[List[str]] = None
+    time_window: Optional[str] = None
 
 class PrescriptionCodeCreate(PrescriptionCodeBase):
     pass

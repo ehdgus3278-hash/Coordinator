@@ -59,7 +59,7 @@ export default function PrescriptionManagement() {
             <label className="block text-xs font-medium text-gray-500 mb-1">코드</label>
             <input value={form.code} disabled={editing}
               onChange={e => setForm({ ...form, code: e.target.value })}
-              className="w-full border rounded-lg px-3 py-2 text-sm font-mono disabled:bg-gray-100" placeholder="MM105" />
+              className="w-full border rounded-lg px-3 py-2 text-sm font-mono disabled:bg-gray-100" placeholder="MM105AM" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">치료명</label>
