@@ -272,6 +272,18 @@ function migrateLegacyCodes(state) {
 let state = loadState();
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 if (migrateLegacyCodes(state)) save();
+
+// DEFAULT_PRESCRIPTIONS에 새로 추가된 코드가 저장된 state에 없으면 자동 병합
+(function syncNewCodes() {
+  let touched = false;
+  for (const [code, rx] of Object.entries(DEFAULT_PRESCRIPTIONS)) {
+    if (!state.prescriptions[code]) {
+      state.prescriptions[code] = structuredClone(rx);
+      touched = true;
+    }
+  }
+  if (touched) save();
+})();
 function nextId() { return state.seq++; }
 
 //==================================================================
