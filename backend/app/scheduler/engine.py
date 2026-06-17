@@ -192,6 +192,13 @@ def schedule_patient(
         all_stations = room_station_list(room_name, room_stations_map, room_capacity_map)
         station_zone = {s["name"]: s.get("zone") for s in all_stations}
 
+        # 입력 순서와 무관하게 AM → 시간무관 → PM 순으로 처리하여
+        # PM 코드가 먼저 등록되어도 current_idx가 AM 범위를 건너뛰지 않도록 한다.
+        def _tw_order(u: Dict) -> int:
+            tw = u["rx"].get("time_window")
+            return 0 if tw == "AM" else (2 if tw == "PM" else 1)
+        room_units = sorted(room_units, key=_tw_order)
+
         for unit in room_units:
             code, overlay_code, rx = unit["code"], unit["overlay"], unit["rx"]
             n_slots = _slots_needed(rx["duration"])
@@ -273,7 +280,7 @@ def schedule_patient(
                     for i in range(current_idx, end_idx + 1)
                 ):
                     w = "AM" if window == set(AM_SLOTS) else "PM"
-                    s_t = TIME_SLOTS[current_idx] if current_idx < len(TIME_SLOTS) else "?"
+                    s_t = TIME_SLOTS[start_idx] if start_idx < len(TIME_SLOTS) else "?"
                     e_t = TIME_SLOTS[end_idx] if 0 <= end_idx < len(TIME_SLOTS) else "?"
                     warnings.append(
                         f"{code}({rx['name']}): {w} 전용 코드이지만 "

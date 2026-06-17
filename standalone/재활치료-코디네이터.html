@@ -437,6 +437,10 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
     const stationZone = {};
     for (const s of allStations) stationZone[s.name] = s.zone;
 
+    // AM → 시간무관 → PM 순으로 정렬: PM 코드가 먼저 등록되어도 currentIdx가 AM 범위를 건너뛰지 않도록 한다.
+    const twOrder = tw => tw === "AM" ? 0 : tw === "PM" ? 2 : 1;
+    roomUnits.sort((a, b) => twOrder(a.rx.timeWindow) - twOrder(b.rx.timeWindow));
+
     for (const unit of roomUnits) {
       const { code, overlay: overlayCode, rx } = unit;
       const n = slotsNeeded(rx.duration);
@@ -515,7 +519,7 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
           i => i + n - 1 <= endIdx && Array.from({length: n}, (_, j) => TIME_SLOTS[i + j]).every(s => window.has(s))
         )) {
           const wName = rx.timeWindow || "해당";
-          const sT = TIME_SLOTS[currentIdx] || "?";
+          const sT = TIME_SLOTS[startIdx] || "?";
           const eT = TIME_SLOTS[endIdx] || "?";
           warnings.push(`${code}(${rx.name}): ${wName} 전용 코드이지만 환자의 가능 시간(${sT}~${eT})에 ${wName} 슬롯이 없습니다.`);
         } else {
