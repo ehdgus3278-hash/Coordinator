@@ -227,8 +227,12 @@ def schedule_patient(
 
             station_usage = {nm: _station_usage(nm) for nm in eligible}
 
+            # AM/PM 전용 코드는 시간무관 코드가 current_idx를 앞당겨도 항상
+            # 환자의 가능 시작(start_idx)부터 탐색하여 슬롯을 놓치지 않는다.
+            search_start = start_idx if rx.get("time_window") else current_idx
+
             best: Optional[Tuple[int, int, str, int]] = None  # (load, slot_idx, station, station_usage)
-            for i in range(current_idx, len(TIME_SLOTS)):
+            for i in range(search_start, len(TIME_SLOTS)):
                 if i + n_slots - 1 > end_idx:
                     break
                 if window is not None and any(TIME_SLOTS[i + j] not in window for j in range(n_slots)):
@@ -277,7 +281,7 @@ def schedule_patient(
                 if window is not None and not any(
                     i + n_slots - 1 <= end_idx
                     and all(TIME_SLOTS[i + j] in window for j in range(n_slots))
-                    for i in range(current_idx, end_idx + 1)
+                    for i in range(start_idx, end_idx + 1)
                 ):
                     w = "AM" if window == set(AM_SLOTS) else "PM"
                     s_t = TIME_SLOTS[start_idx] if start_idx < len(TIME_SLOTS) else "?"

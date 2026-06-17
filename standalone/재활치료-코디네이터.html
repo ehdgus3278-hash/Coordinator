@@ -473,8 +473,10 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
 
       // 우선순위 4: 전체 가능 시간대를 훑어, 분배 한도를 지키면서 가장 한산한
       // (점유 인원이 가장 적은) 슬롯을 고른다 (로드밸런싱). currentIdx는 하한선으로만 사용.
+      // AM/PM 전용 코드는 start_idx부터 탐색하여 시간무관 코드에 의해 current_idx가 앞당겨져도 슬롯을 놓치지 않는다.
+      const searchStart = rx.timeWindow ? startIdx : currentIdx;
       let best = null; // { load, i, station, stnU }
-      for (let i = currentIdx; i < TIME_SLOTS.length; i++) {
+      for (let i = searchStart; i < TIME_SLOTS.length; i++) {
         if (i + n - 1 > endIdx) break;
         if (window && Array.from({ length: n }, (_, j) => TIME_SLOTS[i + j]).some(s => !window.has(s))) continue;
 
@@ -515,7 +517,7 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
       }
 
       if (best === null) {
-        if (window !== null && !Array.from({length: endIdx - currentIdx + 1}, (_, k) => currentIdx + k).some(
+        if (window !== null && !Array.from({length: endIdx - startIdx + 1}, (_, k) => startIdx + k).some(
           i => i + n - 1 <= endIdx && Array.from({length: n}, (_, j) => TIME_SLOTS[i + j]).every(s => window.has(s))
         )) {
           const wName = rx.timeWindow || "해당";
