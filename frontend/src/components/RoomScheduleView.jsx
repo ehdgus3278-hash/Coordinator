@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { api, TIME_SLOTS, today } from '../api'
 
 export default function RoomScheduleView() {
@@ -7,6 +7,7 @@ export default function RoomScheduleView() {
   const [date, setDate] = useState(today())
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
+  const draggingId = useRef(null)
 
   useEffect(() => {
     api.rooms.list().then(r => {
@@ -15,15 +16,31 @@ export default function RoomScheduleView() {
     })
   }, [])
 
-  useEffect(() => {
+  const fetchRoom = () => {
     if (!roomName) return
     setError('')
     api.schedules.forRoom(roomName, date)
       .then(r => setData(r.data))
       .catch(e => { setError(e.response?.data?.detail || '조회 실패'); setData(null) })
-  }, [roomName, date])
+  }
+
+  useEffect(() => { fetchRoom() }, [roomName, date])
 
   const stationAt = (slot, station) => data?.slots.find(s => s.slot_time === slot && s.station === station)
+
+  const handleDrop = async (slot, station) => {
+    const id = draggingId.current
+    draggingId.current = null
+    if (!id) return
+    const occupant = stationAt(slot, station)
+    if (occupant && occupant.id !== id) return  // occupied by another — ignore
+    try {
+      await api.schedules.move(id, { slot_time: slot, station })
+      fetchRoom()
+    } catch (e) {
+      setError(e.response?.data?.detail || '이동 실패')
+    }
+  }
 
   return (
     <div>
@@ -52,6 +69,7 @@ export default function RoomScheduleView() {
 
         {data && (
           <div className="overflow-x-auto">
+            <p className="text-xs text-gray-400 mb-2">셀을 드래그해서 시간/스테이션을 변경할 수 있습니다.</p>
             <table className="w-full text-sm border-collapse min-w-[600px]">
               <thead>
                 <tr className="bg-gray-50 text-gray-600">
@@ -64,20 +82,27 @@ export default function RoomScheduleView() {
               <tbody>
                 {TIME_SLOTS.map(slot => (
                   <tr key={slot} className="hover:bg-blue-50">
-                    <td className="border px-3 py-2 font-mono text-gray-600">{slot}</td>
+                    <td className="border px-3 py-2 font-mono text-gray-600 text-xs">{slot}</td>
                     {data.stations.map(st => {
                       const s = stationAt(slot, st)
                       return (
-                        <td key={st} className="border px-3 py-2">
+                        <td
+                          key={st}
+                          className="border px-1 py-1"
+                          onDragOver={e => e.preventDefault()}
+                          onDrop={() => handleDrop(slot, st)}
+                        >
                           {s ? (
-                            <div>
-                              <div className="font-medium text-gray-800">{s.label}</div>
-                              <div className="text-xs text-blue-600 font-mono">
-                                {s.prescription_code}{s.overlay_code ? `+${s.overlay_code}` : ''}
-                              </div>
+                            <div
+                              draggable
+                              onDragStart={() => { draggingId.current = s.id }}
+                              onDragEnd={() => { draggingId.current = null }}
+                              className="font-medium text-gray-800 px-2 py-1 rounded cursor-grab select-none hover:bg-white/60"
+                            >
+                              {s.label}
                             </div>
                           ) : (
-                            <span className="text-gray-300">-</span>
+                            <span className="text-gray-200 px-2 py-1">-</span>
                           )}
                         </td>
                       )

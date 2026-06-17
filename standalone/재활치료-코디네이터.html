@@ -136,6 +136,9 @@ const TIME_SLOTS = [
 const AM_SLOTS = TIME_SLOTS.filter(t => t < "12:00");
 const PM_SLOTS = TIME_SLOTS.filter(t => t >= "12:00");
 
+// 다른 슬롯이 다 찬 뒤에만 채워지는 후순위 타임.
+const LAST_PRIORITY_SLOTS = new Set(["08:00", "11:30", "16:30"]);
+
 const BRAIN_ROOM = "뇌재활치료실";
 const OT_ROOM = "작업치료실";
 const ST_ROOM = "언어치료실";
@@ -510,7 +513,12 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
         const zone = stationZone[station];
         const load = Math.max(...slotOccupied.map(occ => zoneCount(occ, zone, stationZone)));
         const stnU = stationUsage[station];
-        if (best === null || load < best.load || (load === best.load && stnU < best.stnU)) best = { load, i, station, stnU };
+        const penalty = LAST_PRIORITY_SLOTS.has(TIME_SLOTS[i]) ? 1 : 0;
+        const better = best === null ||
+          penalty < best.penalty ||
+          (penalty === best.penalty && load < best.load) ||
+          (penalty === best.penalty && load === best.load && stnU < best.stnU);
+        if (better) best = { penalty, load, i, station, stnU };
       }
 
       if (best === null) {
@@ -552,6 +560,7 @@ const TABS = [
 ];
 let activeTab = "register";
 let lastResult = null;       // 마지막 배정 결과
+let roomDragId = null;       // 드래그 중인 스케줄 ID
 let registerForm = { name: "", date: today(), endDate: today(), start: "08:00", end: "17:00", zoneRestriction: "", codes: [{ room: "", code: "" }] };
 let patientView = { patientId: "", date: today() };
 let roomView = { room: BRAIN_ROOM, date: today() };
@@ -809,9 +818,14 @@ function viewRoom() {
             <td class="mono muted">${slot}</td>
             ${stations.map(st => {
               const s = at(slot, st.name);
-              return `<td>${ s
-                ? `<div class="cell-name">${esc(s.label)}</div><div class="cell-code">${s.code}${s.overlayCode ? "+" + s.overlayCode : ""}</div>`
-                : `<span class="muted">-</span>` }</td>`;
+              return `<td ondragover="event.preventDefault()" ondrop="onRoomDrop('${slot}','${st.name.replace(/'/g,"\\'")}')">
+                ${ s
+                  ? `<div class="cell-name" draggable="true"
+                       ondragstart="onRoomDragStart(event,${s.id})"
+                       ondragend="onRoomDragEnd(event)"
+                       style="cursor:grab">${esc(s.label)}</div>`
+                  : `<span class="muted">-</span>` }
+              </td>`;
             }).join("")}
           </tr>`).join("")}
       </tbody>
@@ -885,6 +899,28 @@ window.delPatient = function (id) {
   state.schedules = state.schedules.filter(s => s.patientId !== id);
   if (Number(patientView.patientId) === id) patientView.patientId = "";
   save(); render();
+};
+
+//==================================================================
+// 치료실 시간표 드래그 & 드롭
+window.onRoomDragStart = function(e, id) {
+  roomDragId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.currentTarget.style.opacity = '0.4';
+};
+window.onRoomDragEnd = function(e) {
+  e.currentTarget.style.opacity = '1';
+};
+window.onRoomDrop = function(slot, station) {
+  if (roomDragId === null) return;
+  const occupant = state.schedules.find(
+    s => s.slot === slot && s.station === station && s.date === roomView.date && s.room === roomView.room
+  );
+  if (occupant && occupant.id !== roomDragId) { roomDragId = null; return; } // 이미 점유
+  const sch = state.schedules.find(s => s.id === roomDragId);
+  if (sch) { sch.slot = slot; sch.station = station; save(); }
+  roomDragId = null;
+  render();
 };
 
 //==================================================================

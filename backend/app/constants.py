@@ -7,6 +7,9 @@ TIME_SLOTS = [
 AM_SLOTS = [t for t in TIME_SLOTS if t < "12:00"]
 PM_SLOTS = [t for t in TIME_SLOTS if t >= "12:00"]
 
+# 다른 슬롯이 다 찬 뒤에만 채워지는 후순위 타임.
+LAST_PRIORITY_SLOTS = {"08:00", "11:30", "16:30"}
+
 BRAIN_ROOM = "뇌재활치료실"
 OT_ROOM = "작업치료실"
 ST_ROOM = "언어치료실"

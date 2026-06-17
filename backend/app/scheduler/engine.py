@@ -2,7 +2,7 @@ import math
 from datetime import date
 from typing import Dict, List, Optional, Set, Tuple
 
-from ..constants import LABEL_SUFFIX, TIME_SLOTS, ZONE_CAPACITY, ROOM_CAPACITY_OVERRIDE, AM_SLOTS, PM_SLOTS
+from ..constants import LABEL_SUFFIX, LAST_PRIORITY_SLOTS, TIME_SLOTS, ZONE_CAPACITY, ROOM_CAPACITY_OVERRIDE, AM_SLOTS, PM_SLOTS
 
 
 def _slot_index(time_str: str) -> int:
@@ -236,7 +236,7 @@ def schedule_patient(
             # 환자의 가능 시작(start_idx)부터 탐색하여 슬롯을 놓치지 않는다.
             search_start = start_idx if rx.get("time_window") else current_idx
 
-            best: Optional[Tuple[int, int, str, int]] = None  # (load, slot_idx, station, station_usage)
+            best: Optional[Tuple[int, int, int, str, int]] = None  # (penalty, load, slot_idx, station, station_usage)
             for i in range(search_start, len(TIME_SLOTS)):
                 if i + n_slots - 1 > end_idx:
                     break
@@ -279,8 +279,9 @@ def schedule_patient(
                 zone = station_zone.get(station)
                 load = max(_zone_count(occ, zone, station_zone) for occ in slot_occupied)
                 stn_u = station_usage[station]
-                if best is None or (load, stn_u) < (best[0], best[3]):
-                    best = (load, i, station, stn_u)
+                penalty = 1 if TIME_SLOTS[i] in LAST_PRIORITY_SLOTS else 0
+                if best is None or (penalty, load, stn_u) < (best[0], best[1], best[4]):
+                    best = (penalty, load, i, station, stn_u)
 
             if best is None:
                 if window is not None and not any(
@@ -299,7 +300,7 @@ def schedule_patient(
                     warnings.append(f"{code}({rx['name']}): 가용 슬롯이 없어 배정하지 못했습니다.")
                 continue
 
-            _, i, station, _ = best
+            _, _, i, station, _ = best
             overlay_name = (
                 prescription_map.get(overlay_code, {}).get("name") if overlay_code else None
             )

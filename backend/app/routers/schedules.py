@@ -12,6 +12,7 @@ from ..schemas import (
     RoomScheduleOut,
     RoomSlotOut,
     ScheduleItemOut,
+    ScheduleMove,
     TherapistScheduleOut,
     TherapistSlotOut,
 )
@@ -250,6 +251,28 @@ def get_therapist_schedule(
         date=date,
         slots=slots,
     )
+
+
+@router.patch("/{schedule_id}")
+def move_schedule(schedule_id: int, data: ScheduleMove, db: Session = Depends(get_db)):
+    s = db.query(Schedule).filter(Schedule.id == schedule_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="스케줄을 찾을 수 없습니다")
+    if data.slot_time not in TIME_SLOTS:
+        raise HTTPException(status_code=400, detail="유효하지 않은 시간 슬롯입니다")
+    conflict = db.query(Schedule).filter(
+        Schedule.room_name == s.room_name,
+        Schedule.date == s.date,
+        Schedule.station == data.station,
+        Schedule.slot_time == data.slot_time,
+        Schedule.id != schedule_id,
+    ).first()
+    if conflict:
+        raise HTTPException(status_code=409, detail="해당 슬롯이 이미 배정되어 있습니다")
+    s.slot_time = data.slot_time
+    s.station = data.station
+    db.commit()
+    return {"ok": True}
 
 
 @router.delete("/{schedule_id}")

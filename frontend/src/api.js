@@ -28,6 +28,7 @@ export const api = {
     forPatient: (id, date)       => http.get(`/schedules/patient/${id}`, { params: { date } }),
     forRoom: (roomName, date)    => http.get('/schedules/room', { params: { room_name: roomName, date } }),
     forTherapist: (id, date)     => http.get(`/schedules/therapist/${id}`, { params: { date } }),
+    move: (id, data)             => http.patch(`/schedules/${id}`, data),
     remove: (id)                 => http.delete(`/schedules/${id}`),
   },
 }

@@ -110,6 +110,11 @@ class RoomScheduleOut(BaseModel):
     slots: List[RoomSlotOut]
 
 
+class ScheduleMove(BaseModel):
+    slot_time: str
+    station: str
+
+
 class TherapistSlotOut(BaseModel):
     slot_time: str
     patient_id: int
