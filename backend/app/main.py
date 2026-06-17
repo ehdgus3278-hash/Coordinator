@@ -10,9 +10,8 @@ from .constants import (
 )
 from .routers import patients, prescriptions, rooms, schedules, therapists
 
-# MM301/MM302/MM151/MM105는 오전(AM)/오후(PM) 코드로 대체되었다. 이미 이 코드들로
-# 생성된 기존 데이터가 있으면 각 스케줄의 실제 슬롯 시간에 맞춰 AM/PM 코드로 옮긴다.
-LEGACY_PRESCRIPTION_CODES = ["MM105", "MM301", "MM302", "MM151"]
+# 기본 코드(MM301 등)는 다시 유효한 코드로 복원되었으므로 마이그레이션 대상이 없다.
+LEGACY_PRESCRIPTION_CODES: list = []
 
 
 def _seed():

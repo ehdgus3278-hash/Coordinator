@@ -38,30 +38,39 @@ ROOM_CAPACITY_OVERRIDE = {
     ST_ROOM: 2,
 }
 
-# 처방코드 표시 라벨에 사용하는 접미사 (예: 홍길동1(301AM), 홍길동M(102))
+# 처방코드 표시 라벨에 사용하는 접미사 (예: 홍길동1(301), 홍길동M(102))
 LABEL_SUFFIX = {
+    "MM301":   "1",
     "MM301AM": "1",
     "MM301PM": "1",
+    "MM302":   "2",
     "MM302AM": "2",
     "MM302PM": "2",
     "MM102": "M",
     "MM10204": "T",
 }
 
-# MM301/MM302/MM151/MM105는 오전(AM)/오후(PM) 코드로 완전히 대체되었다.
+# 기본 코드(시간 무관)와 AM/PM 전용 코드가 함께 존재한다.
+# 기본 코드: 오전·오후 관계없이 환자 가능 시간에 자동 배정.
+# AM/PM 코드: 해당 시간대에만 배정 (시간 고정이 필요한 경우 사용).
 PRESCRIPTION_MASTER = {
-    "MM105AM": {"name": "중추신경계치료(오전)", "duration": 30, "room": BRAIN_ROOM, "zones": ["THERAPIST"], "time_window": "AM"},
-    "MM105PM": {"name": "중추신경계치료(오후)", "duration": 30, "room": BRAIN_ROOM, "zones": ["THERAPIST"], "time_window": "PM"},
-    "MM301AM": {"name": "보행훈련(오전)",       "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"], "time_window": "AM"},
-    "MM301PM": {"name": "보행훈련(오후)",       "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"], "time_window": "PM"},
+    "MM105":   {"name": "중추신경계치료",         "duration": 30, "room": BRAIN_ROOM, "zones": ["THERAPIST"]},
+    "MM105AM": {"name": "중추신경계치료(오전)",    "duration": 30, "room": BRAIN_ROOM, "zones": ["THERAPIST"], "time_window": "AM"},
+    "MM105PM": {"name": "중추신경계치료(오후)",    "duration": 30, "room": BRAIN_ROOM, "zones": ["THERAPIST"], "time_window": "PM"},
+    "MM301":   {"name": "보행훈련",               "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"]},
+    "MM301AM": {"name": "보행훈련(오전)",          "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"], "time_window": "AM"},
+    "MM301PM": {"name": "보행훈련(오후)",          "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"], "time_window": "PM"},
+    "MM302":   {"name": "보행훈련2(임시명)",       "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"]},
     "MM302AM": {"name": "보행훈련2(임시명)(오전)", "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"], "time_window": "AM"},
     "MM302PM": {"name": "보행훈련2(임시명)(오후)", "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"], "time_window": "PM"},
-    "MM102":   {"name": "신경계운동치료(임시명)", "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"]},
-    "MM151AM": {"name": "중첩치료(임시명)(오전)", "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"],
+    "MM102":   {"name": "신경계운동치료(임시명)",  "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"]},
+    "MM151":   {"name": "중첩치료(임시명)",        "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"],
+                "overlay_targets": ["MM301", "MM302"]},
+    "MM151AM": {"name": "중첩치료(임시명)(오전)",  "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"],
                 "overlay_targets": ["MM301AM", "MM302AM"], "time_window": "AM"},
-    "MM151PM": {"name": "중첩치료(임시명)(오후)", "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"],
+    "MM151PM": {"name": "중첩치료(임시명)(오후)",  "duration": 30, "room": BRAIN_ROOM, "zones": ["M", "B", "T"],
                 "overlay_targets": ["MM301PM", "MM302PM"], "time_window": "PM"},
-    "MM10204": {"name": "보조치료(임시명)",  "duration": 30, "room": BRAIN_ROOM, "zones": ["T"]},
+    "MM10204": {"name": "보조치료(임시명)",        "duration": 30, "room": BRAIN_ROOM, "zones": ["T"]},
     "MX112": {"name": "작업치료",     "duration": 15, "room": OT_ROOM},
     "MX115": {"name": "인지작업치료", "duration": 30, "room": OT_ROOM},
     "MS201": {"name": "언어치료",     "duration": 30, "room": ST_ROOM},

@@ -152,7 +152,7 @@ const ROOM_STATIONS = {
 };
 
 // 처방코드별 표시 라벨 접미사 (예: 홍길동1(301AM), 홍길동M(102), 홍길동T(10204))
-const LABEL_SUFFIX = { "MM301AM": "1", "MM301PM": "1", "MM302AM": "2", "MM302PM": "2", "MM102": "M", "MM10204": "T" };
+const LABEL_SUFFIX = { "MM301": "1", "MM301AM": "1", "MM301PM": "1", "MM302": "2", "MM302AM": "2", "MM302PM": "2", "MM102": "M", "MM10204": "T" };
 
 // 분배를 위한 "한 타임당 최대 인원" 제한 (백엔드 constants.py 와 동일).
 // 물리적 스테이션 수보다 적게 설정하면 일부 스테이션은 항상 비워두고 다음 시간대로 자동 분산된다.
@@ -166,18 +166,22 @@ const ROOM_CAPACITY_OVERRIDE = {
   [ST_ROOM]: 2,
 };
 
-// MM301/MM302/MM151/MM105는 오전(AM)/오후(PM) 코드로 완전히 대체되었다.
+// 기본 코드(시간 무관)와 AM/PM 전용 코드가 함께 존재한다.
 const DEFAULT_PRESCRIPTIONS = {
-  "MM105AM": { name: "중추신경계치료(오전)",      duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"], timeWindow: "AM" },
-  "MM105PM": { name: "중추신경계치료(오후)",      duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"], timeWindow: "PM" },
-  "MM301AM": { name: "보행훈련(오전)",            duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "AM" },
-  "MM301PM": { name: "보행훈련(오후)",            duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "PM" },
+  "MM105":   { name: "중추신경계치료",            duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"] },
+  "MM105AM": { name: "중추신경계치료(오전)",       duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"], timeWindow: "AM" },
+  "MM105PM": { name: "중추신경계치료(오후)",       duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"], timeWindow: "PM" },
+  "MM301":   { name: "보행훈련",                  duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
+  "MM301AM": { name: "보행훈련(오전)",             duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "AM" },
+  "MM301PM": { name: "보행훈련(오후)",             duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "PM" },
+  "MM302":   { name: "보행훈련2(임시명)",          duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
   "MM302AM": { name: "보행훈련2(임시명)(오전)",    duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "AM" },
   "MM302PM": { name: "보행훈련2(임시명)(오후)",    duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "PM" },
   "MM102":   { name: "신경계운동치료(임시명)",     duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
+  "MM151":   { name: "중첩치료(임시명)",           duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301","MM302"] },
   "MM151AM": { name: "중첩치료(임시명)(오전)",     duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301AM","MM302AM"], timeWindow: "AM" },
   "MM151PM": { name: "중첩치료(임시명)(오후)",     duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301PM","MM302PM"], timeWindow: "PM" },
-  "MM10204": { name: "보조치료(임시명)",          duration: 30, room: BRAIN_ROOM, zones: ["T"] },
+  "MM10204": { name: "보조치료(임시명)",           duration: 30, room: BRAIN_ROOM, zones: ["T"] },
   "MX112": { name: "작업치료",     duration: 15, room: OT_ROOM },
   "MX115": { name: "인지작업치료", duration: 30, room: OT_ROOM },
   "MS201": { name: "언어치료",     duration: 30, room: ST_ROOM },
@@ -208,9 +212,9 @@ function loadState() {
   };
 }
 
-// MM301/MM302/MM151/MM105는 오전(AM)/오후(PM) 코드로 대체되었다. 이전 버전에서 저장된
+// 구버전(기본 코드가 없던 시절)에서 저장된
 // 기존 데이터가 있으면 각 스케줄의 실제 슬롯 시간에 맞춰 AM/PM 코드로 옮긴다.
-const LEGACY_PRESCRIPTION_CODES = ["MM105", "MM301", "MM302", "MM151"];
+const LEGACY_PRESCRIPTION_CODES = []; // 기본 코드 복원으로 마이그레이션 대상 없음
 function migrateLegacyCodes(state) {
   const legacySet = new Set(LEGACY_PRESCRIPTION_CODES);
   let touched = false;
