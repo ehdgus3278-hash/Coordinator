@@ -249,7 +249,20 @@ def schedule_patient(
                     best = (load, i, station)
 
             if best is None:
-                warnings.append(f"{code}({rx['name']}): 가용 슬롯이 없어 배정하지 못했습니다.")
+                if window is not None and not any(
+                    i + n_slots - 1 <= end_idx
+                    and all(TIME_SLOTS[i + j] in window for j in range(n_slots))
+                    for i in range(current_idx, end_idx + 1)
+                ):
+                    w = "AM" if window == set(AM_SLOTS) else "PM"
+                    s_t = TIME_SLOTS[current_idx] if current_idx < len(TIME_SLOTS) else "?"
+                    e_t = TIME_SLOTS[end_idx] if 0 <= end_idx < len(TIME_SLOTS) else "?"
+                    warnings.append(
+                        f"{code}({rx['name']}): {w} 전용 코드이지만 "
+                        f"환자의 가능 시간({s_t}~{e_t})에 {w} 슬롯이 없습니다."
+                    )
+                else:
+                    warnings.append(f"{code}({rx['name']}): 가용 슬롯이 없어 배정하지 못했습니다.")
                 continue
 
             _, i, station = best

@@ -454,7 +454,16 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
       }
 
       if (best === null) {
-        warnings.push(`${code}(${rx.name}): 가용 슬롯이 없어 배정하지 못했습니다.`);
+        if (window !== null && !Array.from({length: endIdx - currentIdx + 1}, (_, k) => currentIdx + k).some(
+          i => i + n - 1 <= endIdx && Array.from({length: n}, (_, j) => TIME_SLOTS[i + j]).every(s => window.has(s))
+        )) {
+          const wName = rx.timeWindow || "해당";
+          const sT = TIME_SLOTS[currentIdx] || "?";
+          const eT = TIME_SLOTS[endIdx] || "?";
+          warnings.push(`${code}(${rx.name}): ${wName} 전용 코드이지만 환자의 가능 시간(${sT}~${eT})에 ${wName} 슬롯이 없습니다.`);
+        } else {
+          warnings.push(`${code}(${rx.name}): 가용 슬롯이 없어 배정하지 못했습니다.`);
+        }
         continue;
       }
 
