@@ -147,6 +147,7 @@ def schedule_patient(
     existing_schedules: List[Dict],
     target_date: date,
     room_stations_map: Optional[Dict] = None,
+    zone_restriction: Optional[str] = None,
 ) -> Tuple[List[Dict], List[str]]:
     """
     Greedy scheduler implementing the four priorities:
@@ -204,6 +205,10 @@ def schedule_patient(
             n_slots = _slots_needed(rx["duration"])
             eligible = _eligible_station_names(rx.get("zones"), all_stations)
             window = _window_slots(rx.get("time_window"))
+
+            # 환자 존 제한: M/B/T 코드인 경우 지정 존으로만 배정 범위를 좁힌다.
+            if zone_restriction and set(rx.get("zones") or []) & {"M", "B", "T"}:
+                eligible = [nm for nm in eligible if station_zone.get(nm) == zone_restriction]
 
             # THERAPIST zone 동일 치료사 규칙: 이 환자가 이미 같은 날 THERAPIST zone에
             # 배정된 치료사가 있으면 오전·오후 모두 그 치료사로 고정한다.

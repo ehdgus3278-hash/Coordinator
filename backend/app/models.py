@@ -47,6 +47,8 @@ class Patient(Base):
     name = Column(String, nullable=False)
     available_start = Column(String, nullable=False)
     available_end = Column(String, nullable=False)
+    # 뇌재활치료실 M/B/T 존 제한. null이면 처방 코드의 zones 그대로 사용.
+    zone_restriction = Column(String, nullable=True)
 
     schedules = relationship("Schedule", back_populates="patient", cascade="all, delete-orphan")
 

@@ -152,11 +152,7 @@ const ROOM_STATIONS = {
 };
 
 // 처방코드별 표시 라벨 접미사 (예: 홍길동1(301AM), 홍길동M(102), 홍길동T(10204))
-const LABEL_SUFFIX = {
-  "MM301AM": "1", "MM301PM": "1", "MM301B": "1", "MM301BAM": "1", "MM301BPM": "1",
-  "MM302AM": "2", "MM302PM": "2", "MM302B": "2", "MM302BAM": "2", "MM302BPM": "2",
-  "MM102": "M", "MM102B": "M", "MM10204": "T",
-};
+const LABEL_SUFFIX = { "MM301AM": "1", "MM301PM": "1", "MM302AM": "2", "MM302PM": "2", "MM102": "M", "MM10204": "T" };
 
 // 분배를 위한 "한 타임당 최대 인원" 제한 (백엔드 constants.py 와 동일).
 // 물리적 스테이션 수보다 적게 설정하면 일부 스테이션은 항상 비워두고 다음 시간대로 자동 분산된다.
@@ -170,29 +166,19 @@ const ROOM_CAPACITY_OVERRIDE = {
   [ST_ROOM]: 2,
 };
 
-// AM/PM 전용 코드 / B존(자전거) 전용 코드.
+// AM/PM 전용 코드. 존 제한은 환자 프로필의 zoneRestriction으로 관리한다.
 const DEFAULT_PRESCRIPTIONS = {
-  "MM105AM":  { name: "중추신경계치료(오전)",          duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"], timeWindow: "AM" },
-  "MM105PM":  { name: "중추신경계치료(오후)",          duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"], timeWindow: "PM" },
-  "MM301AM":  { name: "보행훈련(오전)",                duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "AM" },
-  "MM301PM":  { name: "보행훈련(오후)",                duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "PM" },
-  "MM301B":   { name: "보행훈련(B존)",                 duration: 30, room: BRAIN_ROOM, zones: ["B"] },
-  "MM301BAM": { name: "보행훈련(B존)(오전)",           duration: 30, room: BRAIN_ROOM, zones: ["B"], timeWindow: "AM" },
-  "MM301BPM": { name: "보행훈련(B존)(오후)",           duration: 30, room: BRAIN_ROOM, zones: ["B"], timeWindow: "PM" },
-  "MM302AM":  { name: "보행훈련2(임시명)(오전)",        duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "AM" },
-  "MM302PM":  { name: "보행훈련2(임시명)(오후)",        duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "PM" },
-  "MM302B":   { name: "보행훈련2(임시명)(B존)",         duration: 30, room: BRAIN_ROOM, zones: ["B"] },
-  "MM302BAM": { name: "보행훈련2(임시명)(B존)(오전)",   duration: 30, room: BRAIN_ROOM, zones: ["B"], timeWindow: "AM" },
-  "MM302BPM": { name: "보행훈련2(임시명)(B존)(오후)",   duration: 30, room: BRAIN_ROOM, zones: ["B"], timeWindow: "PM" },
-  "MM102":    { name: "신경계운동치료(임시명)",          duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
-  "MM102B":   { name: "신경계운동치료(임시명)(B존)",    duration: 30, room: BRAIN_ROOM, zones: ["B"] },
-  "MM151":    { name: "중첩치료(임시명)",               duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301AM","MM302AM","MM301PM","MM302PM"] },
-  "MM151AM":  { name: "중첩치료(임시명)(오전)",         duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301AM","MM302AM"], timeWindow: "AM" },
-  "MM151PM":  { name: "중첩치료(임시명)(오후)",         duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301PM","MM302PM"], timeWindow: "PM" },
-  "MM151B":   { name: "중첩치료(임시명)(B존)",          duration: 30, room: BRAIN_ROOM, zones: ["B"], overlayTargets: ["MM301B","MM302B"] },
-  "MM151BAM": { name: "중첩치료(임시명)(B존)(오전)",    duration: 30, room: BRAIN_ROOM, zones: ["B"], overlayTargets: ["MM301BAM","MM302BAM"], timeWindow: "AM" },
-  "MM151BPM": { name: "중첩치료(임시명)(B존)(오후)",    duration: 30, room: BRAIN_ROOM, zones: ["B"], overlayTargets: ["MM301BPM","MM302BPM"], timeWindow: "PM" },
-  "MM10204":  { name: "보조치료(임시명)",               duration: 30, room: BRAIN_ROOM, zones: ["T"] },
+  "MM105AM": { name: "중추신경계치료(오전)",    duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"], timeWindow: "AM" },
+  "MM105PM": { name: "중추신경계치료(오후)",    duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"], timeWindow: "PM" },
+  "MM301AM": { name: "보행훈련(오전)",          duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "AM" },
+  "MM301PM": { name: "보행훈련(오후)",          duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "PM" },
+  "MM302AM": { name: "보행훈련2(임시명)(오전)", duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "AM" },
+  "MM302PM": { name: "보행훈련2(임시명)(오후)", duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "PM" },
+  "MM102":   { name: "신경계운동치료(임시명)",  duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
+  "MM151":   { name: "중첩치료(임시명)",        duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301AM","MM302AM","MM301PM","MM302PM"] },
+  "MM151AM": { name: "중첩치료(임시명)(오전)",  duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301AM","MM302AM"], timeWindow: "AM" },
+  "MM151PM": { name: "중첩치료(임시명)(오후)",  duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301PM","MM302PM"], timeWindow: "PM" },
+  "MM10204": { name: "보조치료(임시명)",        duration: 30, room: BRAIN_ROOM, zones: ["T"] },
   "MX112": { name: "작업치료",     duration: 15, room: OT_ROOM },
   "MX115": { name: "인지작업치료", duration: 30, room: OT_ROOM },
   "MS201": { name: "언어치료",     duration: 30, room: ST_ROOM },
@@ -280,8 +266,14 @@ if (migrateLegacyCodes(state)) save();
       touched = true;
     }
   }
-  // 제거된 코드 삭제 (MM301/MM302/MM105 기본 코드)
-  const removedCodes = ["MM301", "MM302", "MM105"];
+  // 제거된 코드 삭제 (기본 코드 및 B존 전용 코드)
+  const removedCodes = [
+    "MM301", "MM302", "MM105",
+    "MM301B","MM301BAM","MM301BPM",
+    "MM302B","MM302BAM","MM302BPM",
+    "MM102B",
+    "MM151B","MM151BAM","MM151BPM",
+  ];
   for (const code of removedCodes) {
     if (state.prescriptions[code]) {
       delete state.prescriptions[code];
@@ -405,7 +397,7 @@ function groupUnitsByRoom(units) {
   return Object.keys(groups).sort((a, b) => firstSeen[a] - firstSeen[b]).map(r => [r, groups[r]]);
 }
 
-function schedulePatient(patientName, availStart, availEnd, orders, rxMap, existing, date) {
+function schedulePatient(patientName, availStart, availEnd, orders, rxMap, existing, date, zoneRestriction = null) {
   const results = [], warnings = [];
 
   // room -> slot -> Set(점유 중인 스테이션 이름)
@@ -446,6 +438,11 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
       const n = slotsNeeded(rx.duration);
       let eligible = eligibleStationNames(rx.zones, allStations);
       const window = windowSlots(rx.timeWindow);
+
+      // 환자 존 제한: M/B/T 코드인 경우 지정 존으로만 배정 범위를 좁힌다.
+      if (zoneRestriction && rx.zones?.some(z => ["M","B","T"].includes(z))) {
+        eligible = eligible.filter(nm => stationZone[nm] === zoneRestriction);
+      }
 
       // THERAPIST zone 동일 치료사 규칙: 이 환자가 이미 같은 날 THERAPIST zone에
       // 배정된 치료사가 있으면 오전·오후 모두 그 치료사로 고정한다.
@@ -555,7 +552,7 @@ const TABS = [
 ];
 let activeTab = "register";
 let lastResult = null;       // 마지막 배정 결과
-let registerForm = { name: "", date: today(), start: "08:00", end: "17:00", codes: [{ room: "", code: "" }] };
+let registerForm = { name: "", date: today(), start: "08:00", end: "17:00", zoneRestriction: "", codes: [{ room: "", code: "" }] };
 let patientView = { patientId: "", date: today() };
 let roomView = { room: BRAIN_ROOM, date: today() };
 
@@ -642,6 +639,15 @@ function viewRegister() {
         <input type="date" value="${f.date}" oninput="rf('date', this.value)" style="width:auto" />
       </div>
       <div class="row">
+        <label>뇌재활 존 제한</label>
+        <select style="width:auto" onchange="rf('zoneRestriction', this.value)">
+          <option value="" ${!f.zoneRestriction ? "selected" : ""}>무관 (M·B·T 모두 사용)</option>
+          <option value="M" ${f.zoneRestriction === "M" ? "selected" : ""}>M존만 (매트 — 기능 낮음)</option>
+          <option value="B" ${f.zoneRestriction === "B" ? "selected" : ""}>B존만 (자전거 — 기능 높음)</option>
+          <option value="T" ${f.zoneRestriction === "T" ? "selected" : ""}>T존만 (틸트 — 기능 낮음)</option>
+        </select>
+      </div>
+      <div class="row">
         <label>가능 시간</label>
         <div class="inline">
           <select style="width:auto" onchange="rf('start', this.value)">
@@ -672,7 +678,7 @@ window.onCodeRoom = function (i, v) { registerForm.codes[i] = { room: v, code: "
 window.onCodeCode = function (i, v) { registerForm.codes[i].code = v; render(); };
 window.addCode = function () { registerForm.codes.push({ room: "", code: "" }); render(); };
 window.rmCode = function (i) { registerForm.codes.splice(i, 1); render(); };
-window.resetForm = function () { registerForm = { name: "", date: today(), start: "08:00", end: "17:00", codes: [{ room: "", code: "" }] }; lastResult = null; render(); };
+window.resetForm = function () { registerForm = { name: "", date: today(), start: "08:00", end: "17:00", zoneRestriction: "", codes: [{ room: "", code: "" }] }; lastResult = null; render(); };
 
 window.doAssign = function () {
   const f = registerForm;
@@ -683,11 +689,11 @@ window.doAssign = function () {
 
   const existing = state.schedules.filter(s => s.date === f.date);
   const { results, warnings } = schedulePatient(
-    f.name.trim(), f.start, f.end, codes, state.prescriptions, existing, f.date
+    f.name.trim(), f.start, f.end, codes, state.prescriptions, existing, f.date, f.zoneRestriction || null
   );
 
   const pid = nextId();
-  state.patients.push({ id: pid, name: f.name.trim() });
+  state.patients.push({ id: pid, name: f.name.trim(), zoneRestriction: f.zoneRestriction || null });
   for (const r of results) {
     state.schedules.push({
       id: nextId(), patientId: pid, patientName: f.name.trim(),

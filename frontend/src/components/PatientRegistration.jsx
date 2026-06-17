@@ -10,6 +10,7 @@ export default function PatientRegistration() {
   const [availStart, setAvailStart] = useState('08:00')
   const [availEnd, setAvailEnd] = useState('17:00')
   const [orders, setOrders] = useState([{ room: '', code: '' }])
+  const [zoneRestriction, setZoneRestriction] = useState('')
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -41,6 +42,7 @@ export default function PatientRegistration() {
         available_end: availEnd,
         orders: validOrders,
         date,
+        zone_restriction: zoneRestriction || null,
       })
       setResult(res.data)
     } catch (e) {
@@ -53,6 +55,7 @@ export default function PatientRegistration() {
   const reset = () => {
     setName('')
     setOrders([{ room: '', code: '' }])
+    setZoneRestriction('')
     setResult(null)
     setError('')
   }
@@ -88,6 +91,17 @@ export default function PatientRegistration() {
             onChange={e => setDate(e.target.value)}
             className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">뇌재활 존 제한</label>
+          <select value={zoneRestriction} onChange={e => setZoneRestriction(e.target.value)}
+            className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">무관 (M·B·T 모두 사용)</option>
+            <option value="M">M존만 (매트 — 기능 낮음)</option>
+            <option value="B">B존만 (자전거 — 기능 높음)</option>
+            <option value="T">T존만 (틸트 — 기능 낮음)</option>
+          </select>
         </div>
 
         <div>

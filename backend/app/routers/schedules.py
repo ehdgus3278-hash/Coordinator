@@ -69,9 +69,15 @@ def auto_assign(data: PatientAutoAssign, db: Session = Depends(get_db)):
         existing_schedules=existing_list,
         target_date=data.date,
         room_stations_map=room_stations,
+        zone_restriction=data.zone_restriction,
     )
 
-    patient = Patient(name=data.name, available_start=data.available_start, available_end=data.available_end)
+    patient = Patient(
+        name=data.name,
+        available_start=data.available_start,
+        available_end=data.available_end,
+        zone_restriction=data.zone_restriction,
+    )
     db.add(patient)
     db.flush()
 

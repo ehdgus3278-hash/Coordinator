@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from .database import Base, SessionLocal, engine
 from .models import PrescriptionCode, Room, Schedule, Therapist
@@ -73,6 +74,13 @@ def _migrate_legacy_codes(db):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    # 기존 DB에 신규 컬럼이 없을 수 있으므로 누락된 컬럼을 추가한다.
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE patients ADD COLUMN zone_restriction VARCHAR"))
+            conn.commit()
+        except Exception:
+            pass  # 이미 존재하면 무시
     _seed()
     yield
 

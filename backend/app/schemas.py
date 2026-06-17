@@ -53,6 +53,7 @@ class PatientOut(BaseModel):
     name: str
     available_start: str
     available_end: str
+    zone_restriction: Optional[str] = None
     model_config = {"from_attributes": True}
 
 
@@ -62,6 +63,7 @@ class PatientAutoAssign(BaseModel):
     available_end: str
     orders: List[str]
     date: date
+    zone_restriction: Optional[str] = None
 
 
 class ScheduleItemOut(BaseModel):
