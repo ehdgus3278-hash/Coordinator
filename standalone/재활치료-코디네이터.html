@@ -153,8 +153,8 @@ const ROOM_STATIONS = {
 
 // 처방코드별 표시 라벨 접미사 (예: 홍길동1(301AM), 홍길동M(102), 홍길동T(10204))
 const LABEL_SUFFIX = {
-  "MM301": "1", "MM301AM": "1", "MM301PM": "1", "MM301B": "1", "MM301BAM": "1", "MM301BPM": "1",
-  "MM302": "2", "MM302AM": "2", "MM302PM": "2", "MM302B": "2", "MM302BAM": "2", "MM302BPM": "2",
+  "MM301AM": "1", "MM301PM": "1", "MM301B": "1", "MM301BAM": "1", "MM301BPM": "1",
+  "MM302AM": "2", "MM302PM": "2", "MM302B": "2", "MM302BAM": "2", "MM302BPM": "2",
   "MM102": "M", "MM102B": "M", "MM10204": "T",
 };
 
@@ -170,18 +170,15 @@ const ROOM_CAPACITY_OVERRIDE = {
   [ST_ROOM]: 2,
 };
 
-// 기본 코드(시간 무관) / AM·PM 전용 코드 / B존(자전거) 전용 코드가 함께 존재한다.
+// AM/PM 전용 코드 / B존(자전거) 전용 코드.
 const DEFAULT_PRESCRIPTIONS = {
-  "MM105":    { name: "중추신경계치료",               duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"] },
   "MM105AM":  { name: "중추신경계치료(오전)",          duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"], timeWindow: "AM" },
   "MM105PM":  { name: "중추신경계치료(오후)",          duration: 30, room: BRAIN_ROOM, zones: ["THERAPIST"], timeWindow: "PM" },
-  "MM301":    { name: "보행훈련",                     duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
   "MM301AM":  { name: "보행훈련(오전)",                duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "AM" },
   "MM301PM":  { name: "보행훈련(오후)",                duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "PM" },
   "MM301B":   { name: "보행훈련(B존)",                 duration: 30, room: BRAIN_ROOM, zones: ["B"] },
   "MM301BAM": { name: "보행훈련(B존)(오전)",           duration: 30, room: BRAIN_ROOM, zones: ["B"], timeWindow: "AM" },
   "MM301BPM": { name: "보행훈련(B존)(오후)",           duration: 30, room: BRAIN_ROOM, zones: ["B"], timeWindow: "PM" },
-  "MM302":    { name: "보행훈련2(임시명)",              duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
   "MM302AM":  { name: "보행훈련2(임시명)(오전)",        duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "AM" },
   "MM302PM":  { name: "보행훈련2(임시명)(오후)",        duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], timeWindow: "PM" },
   "MM302B":   { name: "보행훈련2(임시명)(B존)",         duration: 30, room: BRAIN_ROOM, zones: ["B"] },
@@ -189,7 +186,7 @@ const DEFAULT_PRESCRIPTIONS = {
   "MM302BPM": { name: "보행훈련2(임시명)(B존)(오후)",   duration: 30, room: BRAIN_ROOM, zones: ["B"], timeWindow: "PM" },
   "MM102":    { name: "신경계운동치료(임시명)",          duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"] },
   "MM102B":   { name: "신경계운동치료(임시명)(B존)",    duration: 30, room: BRAIN_ROOM, zones: ["B"] },
-  "MM151":    { name: "중첩치료(임시명)",               duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301","MM302"] },
+  "MM151":    { name: "중첩치료(임시명)",               duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301AM","MM302AM","MM301PM","MM302PM"] },
   "MM151AM":  { name: "중첩치료(임시명)(오전)",         duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301AM","MM302AM"], timeWindow: "AM" },
   "MM151PM":  { name: "중첩치료(임시명)(오후)",         duration: 30, room: BRAIN_ROOM, zones: ["M","B","T"], overlayTargets: ["MM301PM","MM302PM"], timeWindow: "PM" },
   "MM151B":   { name: "중첩치료(임시명)(B존)",          duration: 30, room: BRAIN_ROOM, zones: ["B"], overlayTargets: ["MM301B","MM302B"] },
@@ -273,12 +270,21 @@ let state = loadState();
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 if (migrateLegacyCodes(state)) save();
 
-// DEFAULT_PRESCRIPTIONS에 새로 추가된 코드가 저장된 state에 없으면 자동 병합
-(function syncNewCodes() {
+// DEFAULT_PRESCRIPTIONS에 새로 추가된 코드 병합 + 제거된 코드 삭제
+(function syncCodes() {
   let touched = false;
+  // 새 코드 추가
   for (const [code, rx] of Object.entries(DEFAULT_PRESCRIPTIONS)) {
     if (!state.prescriptions[code]) {
       state.prescriptions[code] = structuredClone(rx);
+      touched = true;
+    }
+  }
+  // 제거된 코드 삭제 (MM301/MM302/MM105 기본 코드)
+  const removedCodes = ["MM301", "MM302", "MM105"];
+  for (const code of removedCodes) {
+    if (state.prescriptions[code]) {
+      delete state.prescriptions[code];
       touched = true;
     }
   }
