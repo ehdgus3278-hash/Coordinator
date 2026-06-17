@@ -198,6 +198,14 @@ def schedule_patient(
             eligible = _eligible_station_names(rx.get("zones"), all_stations)
             window = _window_slots(rx.get("time_window"))
 
+            # THERAPIST zone 동일 치료사 규칙: 이 환자가 이미 같은 날 THERAPIST zone에
+            # 배정된 치료사가 있으면 오전·오후 모두 그 치료사로 고정한다.
+            if rx.get("zones") == ["THERAPIST"] and eligible:
+                for res in results:
+                    if res["room_name"] == room_name and station_zone.get(res.get("station")) == "THERAPIST":
+                        eligible = [res["station"]]
+                        break
+
             if not eligible:
                 warnings.append(f"{code}({rx['name']}): 배정 가능한 스테이션이 없습니다.")
                 continue

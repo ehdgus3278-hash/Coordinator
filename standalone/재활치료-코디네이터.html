@@ -440,8 +440,19 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
     for (const unit of roomUnits) {
       const { code, overlay: overlayCode, rx } = unit;
       const n = slotsNeeded(rx.duration);
-      const eligible = eligibleStationNames(rx.zones, allStations);
+      let eligible = eligibleStationNames(rx.zones, allStations);
       const window = windowSlots(rx.timeWindow);
+
+      // THERAPIST zone 동일 치료사 규칙: 이 환자가 이미 같은 날 THERAPIST zone에
+      // 배정된 치료사가 있으면 오전·오후 모두 그 치료사로 고정한다.
+      if (rx.zones?.length === 1 && rx.zones[0] === "THERAPIST" && eligible.length > 0) {
+        for (const res of results) {
+          if (res.room === room && stationZone[res.station] === "THERAPIST") {
+            eligible = [res.station];
+            break;
+          }
+        }
+      }
 
       if (eligible.length === 0) {
         warnings.push(`${code}(${rx.name}): 배정 가능한 스테이션이 없습니다.`);
