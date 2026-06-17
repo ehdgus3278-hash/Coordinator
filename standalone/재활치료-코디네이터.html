@@ -552,7 +552,7 @@ const TABS = [
 ];
 let activeTab = "register";
 let lastResult = null;       // 마지막 배정 결과
-let registerForm = { name: "", date: today(), start: "08:00", end: "17:00", zoneRestriction: "", codes: [{ room: "", code: "" }] };
+let registerForm = { name: "", date: today(), endDate: today(), start: "08:00", end: "17:00", zoneRestriction: "", codes: [{ room: "", code: "" }] };
 let patientView = { patientId: "", date: today() };
 let roomView = { room: BRAIN_ROOM, date: today() };
 
@@ -607,6 +607,9 @@ function viewRegister() {
     const r = lastResult;
     const warns = r.warnings.length
       ? `<div class="warn">${r.warnings.map(w => `<p>⚠ ${esc(w)}</p>`).join("")}</div>` : "";
+    const dateInfo = r.endDate ? `${r.date} ~ ${r.endDate}` : r.date;
+    const previewNote = r.totalDates > 1
+      ? `<p style="font-size:12px;color:#6b7280;margin-bottom:12px">첫째 날(${r.date}) 배정 미리보기 · 총 ${r.totalDates}일 배정됨</p>` : "";
     const items = r.results.length === 0
       ? `<p class="empty">배정된 스케줄이 없습니다.</p>`
       : r.results.slice().sort((a, b) => slotIndex(a.slot) - slotIndex(b.slot)).map(s => `
@@ -621,8 +624,8 @@ function viewRegister() {
         </div>`).join("");
     resultHtml = `
       <div class="card">
-        <h3>배정 결과 — ${esc(r.patientName)} <span class="pill">(${r.date})</span></h3>
-        ${warns}${items}
+        <h3>배정 결과 — ${esc(r.patientName)} <span class="pill">(${dateInfo})</span></h3>
+        ${previewNote}${warns}${items}
       </div>`;
   }
 
@@ -635,8 +638,12 @@ function viewRegister() {
         <input value="${esc(f.name)}" placeholder="홍길동" oninput="rf('name', this.value)" />
       </div>
       <div class="row">
-        <label>배정 날짜</label>
-        <input type="date" value="${f.date}" oninput="rf('date', this.value)" style="width:auto" />
+        <label>배정 기간</label>
+        <div class="inline">
+          <input type="date" value="${f.date}" oninput="rfStartDate(this.value)" style="width:auto" />
+          <span class="muted">~</span>
+          <input type="date" value="${f.endDate}" min="${f.date}" oninput="rf('endDate', this.value)" style="width:auto" />
+        </div>
       </div>
       <div class="row">
         <label>뇌재활 존 제한</label>
@@ -674,11 +681,12 @@ function viewRegister() {
 }
 
 window.rf = function (k, v) { registerForm[k] = v; };
+window.rfStartDate = function (v) { registerForm.date = v; if (registerForm.endDate < v) registerForm.endDate = v; };
 window.onCodeRoom = function (i, v) { registerForm.codes[i] = { room: v, code: "" }; render(); };
 window.onCodeCode = function (i, v) { registerForm.codes[i].code = v; render(); };
 window.addCode = function () { registerForm.codes.push({ room: "", code: "" }); render(); };
 window.rmCode = function (i) { registerForm.codes.splice(i, 1); render(); };
-window.resetForm = function () { registerForm = { name: "", date: today(), start: "08:00", end: "17:00", zoneRestriction: "", codes: [{ room: "", code: "" }] }; lastResult = null; render(); };
+window.resetForm = function () { registerForm = { name: "", date: today(), endDate: today(), start: "08:00", end: "17:00", zoneRestriction: "", codes: [{ room: "", code: "" }] }; lastResult = null; render(); };
 
 window.doAssign = function () {
   const f = registerForm;
@@ -686,23 +694,49 @@ window.doAssign = function () {
   if (!f.name.trim()) { errBox.innerHTML = `<div class="err">환자명을 입력해주세요.</div>`; return; }
   const codes = f.codes.map(c => c.code).filter(Boolean);
   if (codes.length === 0) { errBox.innerHTML = `<div class="err">처방코드를 1개 이상 입력해주세요.</div>`; return; }
+  errBox.innerHTML = "";
 
-  const existing = state.schedules.filter(s => s.date === f.date);
-  const { results, warnings } = schedulePatient(
-    f.name.trim(), f.start, f.end, codes, state.prescriptions, existing, f.date, f.zoneRestriction || null
-  );
+  const startDate = f.date;
+  const endDate = f.endDate >= f.date ? f.endDate : f.date;
+  const dates = [];
+  const cur = new Date(startDate + "T00:00:00");
+  const endD = new Date(endDate + "T00:00:00");
+  while (cur <= endD) { dates.push(cur.toISOString().split("T")[0]); cur.setDate(cur.getDate() + 1); }
 
   const pid = nextId();
   state.patients.push({ id: pid, name: f.name.trim(), zoneRestriction: f.zoneRestriction || null });
-  for (const r of results) {
-    state.schedules.push({
-      id: nextId(), patientId: pid, patientName: f.name.trim(),
-      code: r.code, name: r.name, overlayCode: r.overlayCode, overlayName: r.overlayName,
-      room: r.room, slot: r.slot, station: r.station, label: r.label, date: f.date,
-    });
+
+  let firstDayResults = null;
+  const allWarnings = [];
+
+  for (const date of dates) {
+    const existing = state.schedules.filter(s => s.date === date);
+    const { results, warnings } = schedulePatient(
+      f.name.trim(), f.start, f.end, codes, state.prescriptions, existing, date, f.zoneRestriction || null
+    );
+    for (const r of results) {
+      state.schedules.push({
+        id: nextId(), patientId: pid, patientName: f.name.trim(),
+        code: r.code, name: r.name, overlayCode: r.overlayCode, overlayName: r.overlayName,
+        room: r.room, slot: r.slot, station: r.station, label: r.label, date,
+      });
+    }
+    if (date === startDate) firstDayResults = results;
+    if (warnings.length > 0) {
+      const prefix = dates.length > 1 ? `[${date}] ` : "";
+      allWarnings.push(...warnings.map(w => prefix + w));
+    }
   }
+
   save();
-  lastResult = { patientName: f.name.trim(), date: f.date, results, warnings };
+  lastResult = {
+    patientName: f.name.trim(),
+    date: startDate,
+    endDate: endDate !== startDate ? endDate : null,
+    totalDates: dates.length,
+    results: firstDayResults || [],
+    warnings: allWarnings,
+  };
   render();
 };
 

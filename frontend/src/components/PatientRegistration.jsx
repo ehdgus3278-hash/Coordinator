@@ -7,6 +7,7 @@ const END_OPTIONS = TIME_SLOTS.map(t => ({ value: slotEndTime(t), label: slotEnd
 export default function PatientRegistration() {
   const [name, setName] = useState('')
   const [date, setDate] = useState(today())
+  const [endDate, setEndDate] = useState(today())
   const [availStart, setAvailStart] = useState('08:00')
   const [availEnd, setAvailEnd] = useState('17:00')
   const [orders, setOrders] = useState([{ room: '', code: '' }])
@@ -42,6 +43,7 @@ export default function PatientRegistration() {
         available_end: availEnd,
         orders: validOrders,
         date,
+        end_date: endDate !== date ? endDate : undefined,
         zone_restriction: zoneRestriction || null,
       })
       setResult(res.data)
@@ -54,6 +56,8 @@ export default function PatientRegistration() {
 
   const reset = () => {
     setName('')
+    setDate(today())
+    setEndDate(today())
     setOrders([{ room: '', code: '' }])
     setZoneRestriction('')
     setResult(null)
@@ -84,13 +88,23 @@ export default function PatientRegistration() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">배정 날짜</label>
-          <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-            className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-1">배정 기간</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={date}
+              onChange={e => { setDate(e.target.value); if (e.target.value > endDate) setEndDate(e.target.value) }}
+              className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <span className="text-gray-500">~</span>
+            <input
+              type="date"
+              value={endDate}
+              min={date}
+              onChange={e => setEndDate(e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
         </div>
 
         <div>
@@ -181,10 +195,17 @@ export default function PatientRegistration() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-gray-800">
               배정 결과 — <span className="text-blue-700">{result.patient_name}</span>
-              <span className="text-sm font-normal text-gray-500 ml-2">({result.date})</span>
+              <span className="text-sm font-normal text-gray-500 ml-2">
+                ({result.end_date ? `${result.date} ~ ${result.end_date}` : result.date})
+              </span>
             </h3>
             <span className="text-xs text-gray-400">환자 ID: {result.patient_id}</span>
           </div>
+          {result.total_dates > 1 && (
+            <p className="text-xs text-gray-500 mb-3">
+              첫째 날({result.date}) 배정 미리보기 · 총 {result.total_dates}일 배정됨
+            </p>
+          )}
 
           {result.warnings.length > 0 && (
             <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">

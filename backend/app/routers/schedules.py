@@ -1,4 +1,4 @@
-from datetime import date as date_type
+from datetime import date as date_type, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -52,25 +52,15 @@ def auto_assign(data: PatientAutoAssign, db: Session = Depends(get_db)):
     room_capacity = {r.name: r.beds for r in db.query(Room).all()}
     room_stations = _room_stations_map(db)
 
-    existing = db.query(Schedule).filter(Schedule.date == data.date).all()
-    existing_list = [
-        {"room_name": s.room_name, "slot_time": s.slot_time,
-         "station": s.station, "prescription_code": s.prescription_code}
-        for s in existing
-    ]
+    start_date = data.date
+    end_date = data.end_date or start_date
 
-    items, warnings = schedule_patient(
-        patient_name=data.name,
-        available_start=data.available_start,
-        available_end=data.available_end,
-        orders=data.orders,
-        prescription_map=rx_map,
-        room_capacity_map=room_capacity,
-        existing_schedules=existing_list,
-        target_date=data.date,
-        room_stations_map=room_stations,
-        zone_restriction=data.zone_restriction,
-    )
+    # 날짜 범위 생성
+    dates: List[date_type] = []
+    d = start_date
+    while d <= end_date:
+        dates.append(d)
+        d += timedelta(days=1)
 
     patient = Patient(
         name=data.name,
@@ -81,34 +71,70 @@ def auto_assign(data: PatientAutoAssign, db: Session = Depends(get_db)):
     db.add(patient)
     db.flush()
 
-    saved: List[ScheduleItemOut] = []
-    for item in items:
-        s = Schedule(
-            patient_id=patient.id,
-            prescription_code=item["prescription_code"],
-            overlay_code=item.get("overlay_code"),
-            room_name=item["room_name"],
-            slot_time=item["slot_time"],
-            station=item["station"],
-            date=data.date,
+    first_day_saved: List[ScheduleItemOut] = []
+    all_warnings: List[str] = []
+
+    for target_date in dates:
+        existing = db.query(Schedule).filter(Schedule.date == target_date).all()
+        existing_list = [
+            {"room_name": s.room_name, "slot_time": s.slot_time,
+             "station": s.station, "prescription_code": s.prescription_code}
+            for s in existing
+        ]
+
+        items, warnings = schedule_patient(
+            patient_name=data.name,
+            available_start=data.available_start,
+            available_end=data.available_end,
+            orders=data.orders,
+            prescription_map=rx_map,
+            room_capacity_map=room_capacity,
+            existing_schedules=existing_list,
+            target_date=target_date,
+            room_stations_map=room_stations,
+            zone_restriction=data.zone_restriction,
         )
-        db.add(s)
-        db.flush()
-        saved.append(ScheduleItemOut(
-            id=s.id,
-            slot_time=item["slot_time"],
-            prescription_code=item["prescription_code"],
-            prescription_name=item["prescription_name"],
-            overlay_code=item.get("overlay_code"),
-            overlay_name=item.get("overlay_name"),
-            room_name=item["room_name"],
-            station=item["station"],
-            label=item["label"],
-        ))
+
+        for item in items:
+            s = Schedule(
+                patient_id=patient.id,
+                prescription_code=item["prescription_code"],
+                overlay_code=item.get("overlay_code"),
+                room_name=item["room_name"],
+                slot_time=item["slot_time"],
+                station=item["station"],
+                date=target_date,
+            )
+            db.add(s)
+            db.flush()
+            if target_date == start_date:
+                first_day_saved.append(ScheduleItemOut(
+                    id=s.id,
+                    slot_time=item["slot_time"],
+                    date=target_date,
+                    prescription_code=item["prescription_code"],
+                    prescription_name=item["prescription_name"],
+                    overlay_code=item.get("overlay_code"),
+                    overlay_name=item.get("overlay_name"),
+                    room_name=item["room_name"],
+                    station=item["station"],
+                    label=item["label"],
+                ))
+
+        if warnings:
+            prefix = f"[{target_date}] " if len(dates) > 1 else ""
+            all_warnings.extend(f"{prefix}{w}" for w in warnings)
 
     db.commit()
-    return AutoAssignResult(patient_id=patient.id, patient_name=data.name, date=data.date,
-                            schedules=saved, warnings=warnings)
+    return AutoAssignResult(
+        patient_id=patient.id,
+        patient_name=data.name,
+        date=start_date,
+        end_date=end_date if end_date != start_date else None,
+        total_dates=len(dates),
+        schedules=first_day_saved,
+        warnings=all_warnings,
+    )
 
 
 @router.get("/patient/{patient_id}", response_model=AutoAssignResult)

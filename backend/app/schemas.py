@@ -62,13 +62,15 @@ class PatientAutoAssign(BaseModel):
     available_start: str
     available_end: str
     orders: List[str]
-    date: date
+    date: date                        # 시작일 (또는 단일 날짜)
+    end_date: Optional[date] = None   # 종료일. 설정하면 date~end_date 전 날짜에 배정
     zone_restriction: Optional[str] = None
 
 
 class ScheduleItemOut(BaseModel):
     id: int
     slot_time: str
+    date: Optional[date] = None       # 기간 배정 시 날짜 구분용
     prescription_code: str
     prescription_name: str
     overlay_code: Optional[str] = None
@@ -83,8 +85,10 @@ class ScheduleItemOut(BaseModel):
 class AutoAssignResult(BaseModel):
     patient_id: int
     patient_name: str
-    date: date
-    schedules: List[ScheduleItemOut]
+    date: date                        # 시작일
+    end_date: Optional[date] = None   # 종료일 (기간 배정 시)
+    total_dates: int = 1              # 배정된 날짜 수
+    schedules: List[ScheduleItemOut]  # 첫째 날 스케줄 (미리보기)
     warnings: List[str] = []
 
 
