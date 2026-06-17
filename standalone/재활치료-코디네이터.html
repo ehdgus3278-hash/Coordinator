@@ -412,9 +412,17 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
         continue;
       }
 
+      // 스테이션별 하루 총 사용 횟수 (열 분산용)
+      const stationUsage = {};
+      for (const nm of eligible) {
+        const dayCnt = TIME_SLOTS.reduce((acc, slot) => acc + (slotStations[room]?.[slot]?.has(nm) ? 1 : 0), 0);
+        const resCnt = results.filter(r => r.room === room && r.station === nm).length;
+        stationUsage[nm] = dayCnt + resCnt;
+      }
+
       // 우선순위 4: 전체 가능 시간대를 훑어, 분배 한도를 지키면서 가장 한산한
       // (점유 인원이 가장 적은) 슬롯을 고른다 (로드밸런싱). currentIdx는 하한선으로만 사용.
-      let best = null; // { load, i, station }
+      let best = null; // { load, i, station, stnU }
       for (let i = currentIdx; i < TIME_SLOTS.length; i++) {
         if (i + n - 1 > endIdx) break;
         if (window && Array.from({ length: n }, (_, j) => TIME_SLOTS[i + j]).some(s => !window.has(s))) continue;
@@ -445,12 +453,14 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
           return true;
         };
 
-        const station = eligible.find(feasible);
-        if (!station) continue;
+        const feasibleStns = eligible.filter(feasible);
+        if (feasibleStns.length === 0) continue;
 
+        const station = feasibleStns.reduce((a, b) => stationUsage[a] <= stationUsage[b] ? a : b);
         const zone = stationZone[station];
         const load = Math.max(...slotOccupied.map(occ => zoneCount(occ, zone, stationZone)));
-        if (best === null || load < best.load) best = { load, i, station };
+        const stnU = stationUsage[station];
+        if (best === null || load < best.load || (load === best.load && stnU < best.stnU)) best = { load, i, station, stnU };
       }
 
       if (best === null) {
@@ -467,7 +477,7 @@ function schedulePatient(patientName, availStart, availEnd, orders, rxMap, exist
         continue;
       }
 
-      const { i, station } = best;
+      const { i, station } = best; // stnU unused after selection
       const overlayName = overlayCode ? (rxMap[overlayCode]?.name ?? null) : null;
       results.push({
         code, name: rx.name, overlayCode, overlayName,

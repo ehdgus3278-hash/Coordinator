@@ -204,7 +204,15 @@ def schedule_patient(
 
             # Priority 4: 전체 가능 시간대를 훑어, 분배 한도를 지키면서 가장 한산한
             # (점유 인원이 가장 적은) 슬롯을 고른다 (로드밸런싱). current_idx는 하한선으로만 사용.
-            best: Optional[Tuple[int, int, str]] = None  # (load, slot_idx, station)
+            # Compute total daily usage per eligible station (column load-balancing)
+            def _station_usage(name: str) -> int:
+                day_cnt = sum(1 for slot in TIME_SLOTS if name in slot_stations.get(room_name, {}).get(slot, set()))
+                res_cnt = sum(1 for res in results if res["room_name"] == room_name and res.get("station") == name)
+                return day_cnt + res_cnt
+
+            station_usage = {nm: _station_usage(nm) for nm in eligible}
+
+            best: Optional[Tuple[int, int, str, int]] = None  # (load, slot_idx, station, station_usage)
             for i in range(current_idx, len(TIME_SLOTS)):
                 if i + n_slots - 1 > end_idx:
                     break
@@ -239,14 +247,16 @@ def schedule_patient(
                             return False
                     return True
 
-                station = next((nm for nm in eligible if _feasible(nm)), None)
-                if station is None:
+                feasible_stns = [nm for nm in eligible if _feasible(nm)]
+                if not feasible_stns:
                     continue
 
+                station = min(feasible_stns, key=lambda nm: station_usage[nm])
                 zone = station_zone.get(station)
                 load = max(_zone_count(occ, zone, station_zone) for occ in slot_occupied)
-                if best is None or load < best[0]:
-                    best = (load, i, station)
+                stn_u = station_usage[station]
+                if best is None or (load, stn_u) < (best[0], best[3]):
+                    best = (load, i, station, stn_u)
 
             if best is None:
                 if window is not None and not any(
@@ -265,7 +275,7 @@ def schedule_patient(
                     warnings.append(f"{code}({rx['name']}): 가용 슬롯이 없어 배정하지 못했습니다.")
                 continue
 
-            _, i, station = best
+            _, i, station, _ = best
             overlay_name = (
                 prescription_map.get(overlay_code, {}).get("name") if overlay_code else None
             )
